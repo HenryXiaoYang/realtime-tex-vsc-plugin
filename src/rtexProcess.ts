@@ -10,6 +10,8 @@ export interface RtexProcessOptions {
   projectRoot: string;
   mainFile: string;
   buildDir?: string;
+  /** More `rtex serve` options (e.g. --eligibility). */
+  extraArgs?: string[];
   env?: NodeJS.ProcessEnv;
 }
 
@@ -44,6 +46,7 @@ export class RtexProcess extends EventEmitter {
   start(): void {
     const args = ['serve', '--project', this.opts.projectRoot, '--main', this.opts.mainFile];
     if (this.opts.buildDir) args.push('--build', this.opts.buildDir);
+    args.push(...(this.opts.extraArgs ?? []));
     const child = spawn(this.opts.serverPath, args, {
       cwd: this.opts.projectRoot,
       env: this.opts.env ?? process.env,

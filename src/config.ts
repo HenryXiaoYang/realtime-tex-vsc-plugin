@@ -108,3 +108,16 @@ export function exportPathFor(mainFile: string): string {
 export function isTexDocument(doc: vscode.TextDocument): boolean {
   return doc.uri.scheme === 'file' && (doc.languageId === 'latex' || doc.languageId === 'tex' || /\.tex$/i.test(doc.fileName));
 }
+
+/** `rtex serve` options from the realtimeTex.engine.* settings. Only values that differ from
+ * rtex's defaults are passed, so an older rtex without these options still starts. */
+export function engineArgs(scope?: vscode.Uri): string[] {
+  const c = cfg(scope);
+  const args: string[] = [];
+  const eligibility = c.get<string>('engine.eligibility', 'probe');
+  if (eligibility && eligibility !== 'probe') args.push('--eligibility', eligibility);
+  const budget = Math.round(c.get<number>('engine.fastBudgetMs', 5));
+  if (budget > 0 && budget !== 5) args.push('--fast-budget-ms', String(budget));
+  if (!c.get<boolean>('engine.pictureCache', true)) args.push('--no-picture-cache');
+  return args;
+}

@@ -233,6 +233,31 @@
           "markdownDescription": "Keep the rtex engine installed by the extension up to date with [realtime-tex](https://github.com/HenryXiaoYang/realtime-tex) `main`. Updating pulls the latest source and rebuilds it (needs `git` and `cargo`), then restarts the engine.\n\n[Update rtex now](command:realtimeTex.updateRtex)",
           "scope": "machine"
         },
+        "realtimeTex.engine.eligibility": {
+          "type": "string",
+          "enum": [
+            "probe",
+            "allowlist"
+          ],
+          "enumDescriptions": [
+            "Typeset a part live when its live result matched the last full compile, whatever commands it uses (rtex's default)",
+            "Typeset live only parts made of commands rtex knows to be safe"
+          ],
+          "default": "probe",
+          "markdownDescription": "How rtex decides which parts of the document can update live. See realtime-tex's [ELIGIBILITY.md](https://github.com/HenryXiaoYang/realtime-tex/blob/main/docs/ELIGIBILITY.md). Changing it restarts the engine."
+        },
+        "realtimeTex.engine.fastBudgetMs": {
+          "type": "number",
+          "default": 5,
+          "minimum": 1,
+          "maximum": 1000,
+          "markdownDescription": "Time budget, in milliseconds, for re-typesetting one part live. A part that takes longer three times in a row waits for the full compile until the next layout. Raise it on a slow computer. Changing it restarts the engine."
+        },
+        "realtimeTex.engine.pictureCache": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Reuse unchanged TikZ pictures from the previous full compile, which makes full compiles of drawing-heavy documents several times faster. Changing it restarts the engine."
+        },
         "realtimeTex.mainFile": {
           "type": "string",
           "default": "",

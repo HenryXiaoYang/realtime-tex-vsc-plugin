@@ -61,6 +61,12 @@ export function activate(context: vscode.ExtensionContext): Api {
   context.subscriptions.push(
     vscode.workspace.onDidChangeTextDocument((e) => session?.onDidChangeDocument(e)),
     vscode.workspace.onDidOpenTextDocument((d) => session?.onDidOpenDocument(d)),
+    vscode.workspace.onDidChangeConfiguration((e) => {
+      const engineSettings = ['realtimeTex.engine', 'realtimeTex.serverPath', 'realtimeTex.texliveBin', 'realtimeTex.texDir', 'realtimeTex.buildDir'];
+      if (!session?.running || !engineSettings.some((k) => e.affectsConfiguration(k))) return;
+      vscode.window.setStatusBarMessage('$(sync~spin) Restarting the engine with the new settings…', 4000);
+      void session.restart().then(updateUi);
+    }),
     vscode.workspace.onDidCloseTextDocument((d) => void session?.onDidCloseDocument(d)),
     vscode.window.onDidChangeActiveTextEditor((ed) => {
       if (ed && isTexDocument(ed.document)) {
