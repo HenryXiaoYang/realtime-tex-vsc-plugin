@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.1.0
+## 0.0.1
 
 First release.
 
@@ -10,3 +10,4 @@ First release.
 - LaTeX errors and warnings in the Problems panel; a status pill and status bar entry that explain what the engine is doing.
 - Export PDF, recompile, restart and stop commands; automatic main-file detection.
 - Guided setup: walkthrough, **Check Setup**, one-click **Install rtex** (build from source) and an optional minimal TeX Live install.
+- A first compile that fails or takes long explains itself (with the LaTeX log one click away) instead of waiting silently.

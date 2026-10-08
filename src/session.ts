@@ -1,6 +1,7 @@
 // One rtex session for one main file: keeps rtex's buffers in sync with VS Code, turns events
 // into diagnostics and status, and forwards display lists to the preview.
-import { promises as fs } from 'fs';
+import { execFile } from 'child_process';
+import { existsSync, promises as fs } from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import { PreviewModel } from '../webview/model';
@@ -105,6 +106,25 @@ export class Session implements vscode.Disposable {
     return path.join(this.buildDir, 'bg', path.basename(this.mainRel, path.extname(this.mainRel)) + '.pdf');
   }
 
+  /** The log of the background compile (LuaLaTeX's own .log). */
+  get latexLogPath(): string {
+    return path.join(this.buildDir, 'bg', path.basename(this.mainRel, path.extname(this.mainRel)) + '.log');
+  }
+
+  async openLatexLog(): Promise<void> {
+    if (!existsSync(this.latexLogPath)) {
+      void vscode.window.showInformationMessage('LuaLaTeX has not written a log yet. The extension log has what rtex reported so far.', 'Show Log').then((p) => {
+        if (p) this.log.show(true);
+      });
+      return;
+    }
+    const doc = await vscode.workspace.openTextDocument(this.latexLogPath);
+    const ed = await vscode.window.showTextDocument(doc, { preview: true, viewColumn: vscode.ViewColumn.One });
+    // the end of the log is where a run stops
+    const end = new vscode.Position(doc.lineCount - 1, 0);
+    ed.revealRange(new vscode.Range(end, end), vscode.TextEditorRevealType.InCenter);
+  }
+
   // -------------------------------------------------------------------------------------------
   // lifecycle
 
@@ -129,6 +149,9 @@ export class Session implements vscode.Disposable {
     const env = processEnv(this.ctx, this.server);
     this.log.appendLine(`[start] ${this.server.path} serve --project ${this.projectRoot} --main ${this.mainRel} --build ${this.buildDir}`);
     if (env.RTEX_TEXLIVE_BIN) this.log.appendLine(`[start] TeX Live: ${env.RTEX_TEXLIVE_BIN}`);
+    execFile('lualatex', ['--version'], { env, timeout: 10000 }, (err, stdout) => {
+      this.log.appendLine(`[start] ${err ? `lualatex --version failed: ${err.message}` : String(stdout).split('\n')[0]}`);
+    });
     const proc = new RtexProcess({ serverPath: this.server.path, projectRoot: this.projectRoot, mainFile: this.mainRel, buildDir: this.buildDir, env });
     this.proc = proc;
     proc.on('event', (ev: RtexEvent) => this.onEvent(ev));
@@ -400,7 +423,13 @@ export class Session implements vscode.Disposable {
         break;
       }
       case 'Diagnostics':
-        if (ev.source === 'background') this.bgDiagnosticsThisPass = true;
+        for (const d of ev.items) {
+          this.log.appendLine(`[${ev.source}] ${d.severity}${d.file ? ` ${d.file}${d.line ? `:${d.line}` : ''}` : ''}: ${d.message}`);
+        }
+        if (ev.source === 'background') {
+          this.bgDiagnosticsThisPass = true;
+          this.onPassFailure(ev.items);
+        }
         this.setDiagnostics(ev.source, ev.items);
         break;
       case 'BackgroundScheduled':
@@ -448,6 +477,38 @@ export class Session implements vscode.Disposable {
     }
     this.emitStatus();
     this.outputEmitter.fire({ kind: 'layout', ev, keepFromRevision, pdfPath: ev.pdf_fallback ?? this.pdfPath });
+  }
+
+  /** rtex reports a background pass that could not run at all (no layout follows) as a
+   * diagnostic without file and line. Before the first layout that would leave the preview
+   * waiting forever: show what went wrong instead. */
+  private onPassFailure(items: RtexDiagnostic[]): void {
+    const fail = items.find((d) => d.severity === 'error' && !d.file && !d.line);
+    if (!fail) return;
+    const msg = fail.message;
+    let advice = 'The full compile could not run.';
+    if (/produced no .*rtex\.json/i.test(msg)) {
+      advice =
+        "LuaLaTeX ran but rtex's capture did not. This usually means LuaLaTeX is older than TeX Live 2026, rtex's tex/ folder was not found, or LaTeX stopped at an error before \\begin{document}.";
+    } else if (/spawning lualatex|No such file/i.test(msg)) {
+      advice = 'LuaLaTeX could not be started.';
+    }
+    // LuaLaTeX's own error line (e.g. "! LaTeX Error: File `x.sty' not found.") says the most
+    const texError = msg.split('\n').find((l) => /^! /.test(l.trim()) || /:\d+: /.test(l));
+    if (texError) advice = `LaTeX stopped: ${texError.trim()}`;
+    const actions: Action[] = [
+      { label: 'Open LaTeX Log', command: 'realtimeTex.openLatexLog', primary: true },
+      ACTIONS.showLog,
+      ACTIONS.checkSetup,
+      ACTIONS.recompile,
+    ];
+    if (!this.model.hasLayout) {
+      this.setPhase('live');
+      this.setScreen({ screen: 'error', title: 'The first compile failed', message: advice, detail: msg.length > 3000 ? '…' + msg.slice(-3000) : msg, actions });
+    } else {
+      this.outputEmitter.fire({ kind: 'banner', level: 'error', text: `The last full compile failed: ${firstLine(msg)}`, actions });
+    }
+    this.setPending(false);
   }
 
   private firstError(): RtexDiagnostic | undefined {
@@ -598,8 +659,33 @@ export class Session implements vscode.Disposable {
   // -------------------------------------------------------------------------------------------
   // status
 
+  private compileTimer: ReturnType<typeof setInterval> | undefined;
+
+  /** While the first compile runs, say how long it has been and what may be slow. */
+  private watchFirstCompile(): void {
+    clearInterval(this.compileTimer);
+    const t0 = Date.now();
+    this.compileTimer = setInterval(() => {
+      if (this.statusValue.phase !== 'compiling') {
+        clearInterval(this.compileTimer);
+        return;
+      }
+      const secs = Math.round((Date.now() - t0) / 1000);
+      if (secs < 15) return;
+      this.setScreen({
+        screen: 'compiling',
+        title: `Still typesetting… (${secs} s)`,
+        message:
+          `The first full compile of ${this.mainRel} is still running. Large documents take a while, and the very first LuaLaTeX run on a computer builds its font cache, which can take a few minutes.\n` +
+          'The LaTeX log shows how far it got.',
+        actions: [{ label: 'Open LaTeX Log', command: 'realtimeTex.openLatexLog', primary: true }, ACTIONS.showLog, ACTIONS.restart],
+      });
+    }, 5000);
+  }
+
   private setPhase(phase: Phase): void {
     if (this.statusValue.phase === phase) return;
+    if (phase === 'compiling') this.watchFirstCompile();
     this.statusValue.phase = phase;
     if (phase !== 'live') this.statusValue.pending = false;
     this.emitStatus();

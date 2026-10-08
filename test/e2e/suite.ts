@@ -123,5 +123,21 @@ async function steps(): Promise<void> {
   api.panel()!.panel.dispose();
   await waitFor('the engine to stop', () => !s.running, 10000);
   step('engine stopped when the preview closed');
+
+  // 8. a document whose first compile fails explains why instead of waiting forever
+  const broken = path.join(folder, 'broken.tex');
+  await vscode.workspace.fs.writeFile(
+    vscode.Uri.file(broken),
+    Buffer.from('\\documentclass{article}\n\\usepackage{doesnotexist}\n\\begin{document}\nHello\n\\end{document}\n'),
+  );
+  await vscode.window.showTextDocument(await vscode.workspace.openTextDocument(broken), vscode.ViewColumn.One);
+  await vscode.commands.executeCommand('realtimeTex.openPreview');
+  await waitFor('a session for broken.tex', () => api.session()?.mainFile === broken, 10000);
+  const sb = api.session()!;
+  await waitFor('the failure screen', () => sb.screen.screen === 'error', 120000);
+  if (!/doesnotexist\.sty/.test(sb.screen.message ?? '')) throw new Error(`unexpected message: ${sb.screen.message}`);
+  step(`failed first compile explained: ${sb.screen.message}`);
+  await sleep(800);
+  await screenshot('5-first-compile-failed.png');
   console.log(`[e2e] all ${steps.length} steps passed`);
 }

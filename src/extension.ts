@@ -45,6 +45,7 @@ export function activate(context: vscode.ExtensionContext): Api {
     updateUi();
   });
   reg('realtimeTex.showLog', () => log.show(true));
+  reg('realtimeTex.openLatexLog', () => withSession((s) => s.openLatexLog(), true));
   reg('realtimeTex.checkSetup', () => checkSetup(ctx));
   reg('realtimeTex.buildFromSource', () => buildFromSource(ctx, () => void (session && session.status.phase === 'failed' ? session.restart() : undefined)));
   reg('realtimeTex.selectServerPath', async () => {
@@ -118,7 +119,11 @@ function updateUi(): void {
   void vscode.commands.executeCommand('setContext', 'realtimeTex.running', !!session?.running);
 }
 
-async function withSession(fn: (s: Session) => unknown): Promise<void> {
+async function withSession(fn: (s: Session) => unknown, evenIfStopped = false): Promise<void> {
+  if (session && evenIfStopped) {
+    await fn(session);
+    return;
+  }
   if (!session?.running) {
     const pick = await vscode.window.showWarningMessage('The live preview is not running.', 'Open Live Preview');
     if (pick) await openPreview(undefined, true);
