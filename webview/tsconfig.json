@@ -1,0 +1,13 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ES2022",
+    "moduleResolution": "bundler",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "strict": true,
+    "skipLibCheck": true,
+    "types": [],
+    "noEmit": true
+  },
+  "include": ["./**/*.ts", "../src/protocol.ts", "../src/messages.ts", "../src/fontKey.ts"]
+}

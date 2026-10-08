@@ -1,0 +1,23 @@
+\documentclass{article}
+\usepackage{amsmath}
+\usepackage{xcolor}
+\usepackage{tikz}
+\begin{document}
+\section{Live preview}
+This paragraph is typeset by LuaLaTeX. Edit it and the preview follows in about a
+millisecond, with inline math $e^{i\pi} + 1 = 0$ and \textcolor{blue}{colour}.
+
+\begin{equation}\label{eq:pythagoras}
+  a^2 + b^2 = c^2
+\end{equation}
+
+A second paragraph refers to equation~\eqref{eq:pythagoras} and is long enough to wrap
+over two lines so that line breaking matters for the fast path of the engine.
+
+\begin{itemize}
+  \item Lists, theorems, figures and tables update as one unit.
+  \item Display math such as $\sum_{k=1}^{n} k = \frac{n(n+1)}{2}$ too.
+\end{itemize}
+
+\input{intro}
+\end{document}

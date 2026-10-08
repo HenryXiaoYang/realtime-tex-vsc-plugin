@@ -1,0 +1,355 @@
+:root {
+  --gap: 16px;
+  --toolbar-h: 36px;
+  --page-shadow: 0 1px 3px rgba(0, 0, 0, 0.25), 0 4px 14px rgba(0, 0, 0, 0.12);
+  --live: #2ea043;
+  --busy: var(--vscode-progressBar-background, #0e70c0);
+  --warn: var(--vscode-editorWarning-foreground, #cca700);
+  --error: var(--vscode-editorError-foreground, #f14c4c);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  background: var(--vscode-editorWidget-background, var(--vscode-editor-background));
+  color: var(--vscode-foreground);
+  font-family: var(--vscode-font-family);
+  font-size: var(--vscode-font-size, 13px);
+}
+
+button {
+  font: inherit;
+  color: var(--vscode-foreground);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  padding: 3px 8px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+}
+button:hover {
+  background: var(--vscode-toolbar-hoverBackground, rgba(128, 128, 128, 0.15));
+}
+button:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: 1px;
+}
+button svg {
+  width: 14px;
+  height: 14px;
+  flex: none;
+}
+button.primary {
+  background: var(--vscode-button-background);
+  color: var(--vscode-button-foreground);
+}
+button.primary:hover {
+  background: var(--vscode-button-hoverBackground);
+}
+button.active {
+  background: var(--vscode-inputOption-activeBackground, rgba(0, 120, 212, 0.25));
+  border-color: var(--vscode-inputOption-activeBorder, transparent);
+}
+
+/* toolbar ----------------------------------------------------------------------------------- */
+.toolbar {
+  position: fixed;
+  inset: 0 0 auto 0;
+  min-height: var(--toolbar-h);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 6px;
+  padding: 4px 8px;
+  background: var(--vscode-editor-background);
+  border-bottom: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.35));
+  z-index: 10;
+}
+.toolbar .spacer {
+  flex: 1;
+}
+.toolbar .group {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+.zoom-label {
+  min-width: 56px;
+  justify-content: center;
+  font-variant-numeric: tabular-nums;
+}
+.page-no {
+  opacity: 0.75;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.pill {
+  border-radius: 999px;
+  padding: 2px 10px 2px 8px;
+  border: 1px solid rgba(128, 128, 128, 0.35);
+  font-size: 0.92em;
+}
+.pill[hidden] {
+  display: none;
+}
+.pill::before {
+  content: '';
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.6;
+}
+.pill.live::before {
+  background: var(--live);
+  opacity: 1;
+}
+.pill.busy::before {
+  background: var(--busy);
+  opacity: 1;
+  animation: pulse 1s ease-in-out infinite;
+}
+.pill.ok::before {
+  background: var(--live);
+  opacity: 0.55;
+}
+.pill.warn {
+  border-color: var(--warn);
+}
+.pill.warn::before {
+  background: var(--warn);
+  opacity: 1;
+}
+.pill.error {
+  border-color: var(--error);
+}
+.pill.error::before {
+  background: var(--error);
+  opacity: 1;
+}
+@keyframes pulse {
+  50% {
+    opacity: 0.25;
+  }
+}
+
+/* narrow panels: icons only (labels stay in tooltips), then fewer items */
+.toolbar.compact button.labeled:not(#export) span,
+.toolbar.compact .page-no {
+  display: none;
+}
+.toolbar.tiny #export span,
+.toolbar.tiny #recompile,
+.toolbar.tiny .zoom-label {
+  display: none;
+}
+/* document controls appear with the document */
+body:not(.has-doc) .toolbar .group,
+body:not(.has-doc) #follow,
+body:not(.has-doc) #recompile,
+body:not(.has-doc) #export,
+body:not(.has-doc) .page-no {
+  display: none;
+}
+
+/* banner ------------------------------------------------------------------------------------ */
+.banner {
+  position: fixed;
+  top: calc(var(--toolbar-h) + 4px);
+  left: 8px;
+  right: 8px;
+  z-index: 9;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 6px 6px 12px;
+  border-radius: 6px;
+  background: var(--vscode-editorWidget-background, var(--vscode-editor-background));
+  border: 1px solid var(--vscode-widget-border, rgba(128, 128, 128, 0.4));
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+}
+.banner[hidden] {
+  display: none;
+}
+.banner.error {
+  border-left: 4px solid var(--error);
+}
+.banner.warn {
+  border-left: 4px solid var(--warn);
+}
+.banner .text {
+  flex: 1;
+  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.banner .actions {
+  display: inline-flex;
+  gap: 4px;
+}
+
+/* pages ------------------------------------------------------------------------------------- */
+#viewport {
+  position: absolute;
+  inset: var(--toolbar-h) 0 0 0;
+  overflow: auto;
+  outline: none;
+}
+#pages {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--gap);
+  padding: var(--gap);
+  min-width: min-content;
+}
+.page {
+  position: relative;
+  flex: none;
+  background: #fff;
+  box-shadow: var(--page-shadow);
+}
+.page canvas {
+  display: block;
+}
+body.vscode-dark.invert .page canvas,
+body.vscode-high-contrast.invert .page canvas {
+  filter: invert(0.92) hue-rotate(180deg);
+}
+.badge {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 3px;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  cursor: help;
+  user-select: none;
+}
+.badge[hidden] {
+  display: none;
+}
+.marker {
+  position: absolute;
+  pointer-events: none;
+  border-radius: 3px;
+  background: rgba(255, 200, 0, 0.28);
+  box-shadow: inset 3px 0 0 rgba(230, 160, 0, 0.9);
+  animation: fade 1.6s ease-out forwards;
+}
+@keyframes fade {
+  0%,
+  50% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+/* state screens ----------------------------------------------------------------------------- */
+.screen {
+  position: absolute;
+  inset: var(--toolbar-h) 0 0 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: var(--vscode-editorWidget-background, var(--vscode-editor-background));
+  z-index: 5;
+}
+.screen[hidden] {
+  display: none;
+}
+.card {
+  max-width: 520px;
+  text-align: center;
+}
+.card .title {
+  font-size: 1.35em;
+  font-weight: 600;
+  margin: 12px 0 6px;
+}
+.card .message {
+  margin: 0 0 12px;
+  opacity: 0.85;
+  line-height: 1.5;
+  white-space: pre-line;
+}
+.card .detail {
+  text-align: left;
+  max-height: 180px;
+  overflow: auto;
+  padding: 8px 10px;
+  border-radius: 4px;
+  font-family: var(--vscode-editor-font-family, monospace);
+  font-size: 0.9em;
+  background: var(--vscode-textCodeBlock-background, rgba(128, 128, 128, 0.12));
+  white-space: pre-wrap;
+}
+.card .detail[hidden] {
+  display: none;
+}
+.card .actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: center;
+  margin-top: 14px;
+}
+.card .actions button {
+  border-color: var(--vscode-button-border, rgba(128, 128, 128, 0.45));
+  padding: 5px 14px;
+}
+.spinner {
+  width: 28px;
+  height: 28px;
+  margin: 0 auto;
+  border-radius: 50%;
+  border: 3px solid rgba(128, 128, 128, 0.25);
+  border-top-color: var(--busy);
+  animation: spin 0.9s linear infinite;
+}
+.spinner[hidden] {
+  display: none;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* toast ------------------------------------------------------------------------------------- */
+.toast {
+  position: fixed;
+  top: 46px;
+  left: 50%;
+  transform: translateX(-50%);
+  max-width: calc(100% - 32px);
+  padding: 8px 14px;
+  border-radius: 6px;
+  background: var(--vscode-notifications-background, #252526);
+  color: var(--vscode-notifications-foreground, #ccc);
+  border: 1px solid var(--vscode-notifications-border, rgba(128, 128, 128, 0.4));
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
+  z-index: 20;
+  cursor: pointer;
+}
+.toast[hidden] {
+  display: none;
+}

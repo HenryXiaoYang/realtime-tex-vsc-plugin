@@ -1,0 +1,353 @@
+{
+  "name": "realtime-tex",
+  "displayName": "Realtime TeX Live Preview",
+  "description": "Live LaTeX preview that re-typesets the paragraph you are editing in about a millisecond, powered by realtime-tex (rtex).",
+  "version": "0.1.0",
+  "publisher": "henryxiaoyang",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/HenryXiaoYang/realtime-tex-vsc-plugin"
+  },
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Visualization",
+    "Other"
+  ],
+  "keywords": [
+    "latex",
+    "tex",
+    "luatex",
+    "preview",
+    "live preview",
+    "realtime"
+  ],
+  "icon": "media/icon.png",
+  "extensionKind": [
+    "workspace"
+  ],
+  "main": "./dist/extension.js",
+  "activationEvents": [
+    "onLanguage:latex",
+    "onLanguage:tex",
+    "onWebviewPanel:realtimeTex.preview"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "command": "realtimeTex.openPreview",
+        "title": "Open Live Preview to the Side",
+        "category": "Realtime TeX",
+        "icon": "$(open-preview)"
+      },
+      {
+        "command": "realtimeTex.openPreviewHere",
+        "title": "Open Live Preview",
+        "category": "Realtime TeX",
+        "icon": "$(preview)"
+      },
+      {
+        "command": "realtimeTex.exportPdf",
+        "title": "Export PDF",
+        "category": "Realtime TeX",
+        "icon": "$(file-pdf)"
+      },
+      {
+        "command": "realtimeTex.recompile",
+        "title": "Recompile Whole Document",
+        "category": "Realtime TeX",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "realtimeTex.restart",
+        "title": "Restart Engine",
+        "category": "Realtime TeX",
+        "icon": "$(debug-restart)"
+      },
+      {
+        "command": "realtimeTex.stop",
+        "title": "Stop Engine",
+        "category": "Realtime TeX",
+        "icon": "$(debug-stop)"
+      },
+      {
+        "command": "realtimeTex.showLog",
+        "title": "Show Log",
+        "category": "Realtime TeX",
+        "icon": "$(output)"
+      },
+      {
+        "command": "realtimeTex.checkSetup",
+        "title": "Check Setup",
+        "category": "Realtime TeX",
+        "icon": "$(checklist)"
+      },
+      {
+        "command": "realtimeTex.buildFromSource",
+        "title": "Install rtex (Build from Source)",
+        "category": "Realtime TeX",
+        "icon": "$(tools)"
+      },
+      {
+        "command": "realtimeTex.selectServerPath",
+        "title": "Locate rtex Binary\u2026",
+        "category": "Realtime TeX"
+      },
+      {
+        "command": "realtimeTex.selectMainFile",
+        "title": "Choose Main File\u2026",
+        "category": "Realtime TeX"
+      },
+      {
+        "command": "realtimeTex.syncToPreview",
+        "title": "Show Cursor Position in Preview",
+        "category": "Realtime TeX",
+        "icon": "$(target)"
+      },
+      {
+        "command": "realtimeTex.gettingStarted",
+        "title": "Get Started",
+        "category": "Realtime TeX",
+        "icon": "$(rocket)"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "realtimeTex.openPreview",
+        "key": "ctrl+alt+v",
+        "mac": "cmd+alt+v",
+        "when": "editorLangId == latex || editorLangId == tex || resourceExtname == .tex"
+      },
+      {
+        "command": "realtimeTex.syncToPreview",
+        "key": "ctrl+alt+j",
+        "mac": "cmd+alt+j",
+        "when": "editorLangId == latex || editorLangId == tex || resourceExtname == .tex"
+      },
+      {
+        "command": "realtimeTex.exportPdf",
+        "key": "ctrl+alt+e",
+        "mac": "cmd+alt+e",
+        "when": "editorLangId == latex || editorLangId == tex || resourceExtname == .tex"
+      }
+    ],
+    "menus": {
+      "editor/title": [
+        {
+          "command": "realtimeTex.openPreview",
+          "when": "editorLangId == latex || editorLangId == tex || resourceExtname == .tex",
+          "group": "navigation@1"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "realtimeTex.openPreview",
+          "when": "editorLangId == latex || editorLangId == tex || resourceExtname == .tex",
+          "group": "navigation@90"
+        },
+        {
+          "command": "realtimeTex.syncToPreview",
+          "when": "realtimeTex.running && (editorLangId == latex || editorLangId == tex || resourceExtname == .tex)",
+          "group": "navigation@91"
+        }
+      ],
+      "explorer/context": [
+        {
+          "command": "realtimeTex.openPreview",
+          "when": "resourceExtname == .tex",
+          "group": "navigation@90"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "realtimeTex.exportPdf",
+          "when": "realtimeTex.running"
+        },
+        {
+          "command": "realtimeTex.recompile",
+          "when": "realtimeTex.running"
+        },
+        {
+          "command": "realtimeTex.stop",
+          "when": "realtimeTex.running"
+        },
+        {
+          "command": "realtimeTex.syncToPreview",
+          "when": "realtimeTex.running"
+        },
+        {
+          "command": "realtimeTex.openPreviewHere",
+          "when": "false"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Realtime TeX",
+      "properties": {
+        "realtimeTex.serverPath": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Path to the `rtex` binary. Leave empty to use the copy installed by **Realtime TeX: Install rtex (Build from Source)**, or `rtex` from your `PATH`.",
+          "scope": "machine-overridable"
+        },
+        "realtimeTex.texliveBin": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Folder that contains `lualatex` (TeX Live 2026 or newer). Leave empty to use your `PATH`. Example: `/usr/local/texlive/2026/bin/x86_64-linux`.",
+          "scope": "machine-overridable"
+        },
+        "realtimeTex.texDir": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "The `tex/` folder of the realtime-tex checkout (sets `RTEX_TEXDIR`). Only needed if you moved the rtex binary away from the checkout it was built in.",
+          "scope": "machine-overridable"
+        },
+        "realtimeTex.mainFile": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Main `.tex` file of the project, relative to the workspace folder. Leave empty to detect it automatically (from a `% !TEX root = \u2026` comment or the file containing `\\documentclass`).",
+          "scope": "resource"
+        },
+        "realtimeTex.buildDir": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Where rtex keeps its build files. Leave empty to keep them out of your project (in VS Code's workspace storage).",
+          "scope": "resource"
+        },
+        "realtimeTex.exportPath": {
+          "type": "string",
+          "default": "${mainDir}/${mainName}.pdf",
+          "markdownDescription": "Where **Export PDF** writes the PDF. `${mainDir}` is the folder of the main file, `${mainName}` its name without extension.",
+          "scope": "resource"
+        },
+        "realtimeTex.autoStart": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Start the engine as soon as a LaTeX file is opened, without waiting for the preview to be opened."
+        },
+        "realtimeTex.syncCursor": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Scroll the preview to follow the text cursor."
+        },
+        "realtimeTex.preview.invertInDarkTheme": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Show pages with dark background and light text when VS Code uses a dark theme."
+        },
+        "realtimeTex.preview.zoom": {
+          "type": "string",
+          "enum": [
+            "fitWidth",
+            "50",
+            "75",
+            "100",
+            "125",
+            "150",
+            "200"
+          ],
+          "enumDescriptions": [
+            "Fit the page width to the preview panel",
+            "50 %",
+            "75 %",
+            "100 %",
+            "125 %",
+            "150 %",
+            "200 %"
+          ],
+          "default": "fitWidth",
+          "markdownDescription": "Initial zoom of the preview."
+        },
+        "realtimeTex.stopWhenPreviewCloses": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Stop the engine when the preview is closed (frees memory). Turn off to keep diagnostics updating without a preview."
+        }
+      }
+    },
+    "walkthroughs": [
+      {
+        "id": "realtimeTex.welcome",
+        "title": "Get started with Realtime TeX",
+        "description": "See your LaTeX document update as you type, in about a millisecond per keystroke.",
+        "steps": [
+          {
+            "id": "checkSetup",
+            "title": "Check your setup",
+            "description": "Realtime TeX needs **LuaLaTeX** (TeX Live 2026+) and the **rtex** engine. Linux and macOS are supported (on Windows, use WSL).\n[Check Setup](command:realtimeTex.checkSetup)",
+            "media": {
+              "markdown": "media/walkthrough/setup.md"
+            },
+            "completionEvents": [
+              "onCommand:realtimeTex.checkSetup"
+            ]
+          },
+          {
+            "id": "installRtex",
+            "title": "Install the rtex engine",
+            "description": "If the check says rtex is missing, install it with one click. It is built from source with Rust's `cargo` (takes a few minutes, once).\n[Install rtex](command:realtimeTex.buildFromSource)\nAlready have it? [Locate the rtex binary](command:realtimeTex.selectServerPath)",
+            "media": {
+              "markdown": "media/walkthrough/install.md"
+            },
+            "completionEvents": [
+              "onCommand:realtimeTex.buildFromSource",
+              "onCommand:realtimeTex.selectServerPath"
+            ]
+          },
+          {
+            "id": "openPreview",
+            "title": "Open the live preview",
+            "description": "Open a `.tex` file and click the preview icon in the editor's top-right corner, or press **Ctrl+Alt+V** (**Cmd+Alt+V** on Mac).\n[Open Live Preview](command:realtimeTex.openPreview)",
+            "media": {
+              "markdown": "media/walkthrough/preview.md"
+            },
+            "completionEvents": [
+              "onCommand:realtimeTex.openPreview"
+            ]
+          },
+          {
+            "id": "navigate",
+            "title": "Jump between source and preview",
+            "description": "**Double-click** in the preview to jump to that paragraph in the source. The preview follows your cursor automatically; press **Ctrl+Alt+J** to jump there on demand.",
+            "media": {
+              "markdown": "media/walkthrough/navigate.md"
+            }
+          },
+          {
+            "id": "export",
+            "title": "Export a PDF",
+            "description": "When you are done, export a PDF that matches a clean LuaLaTeX build.\n[Export PDF](command:realtimeTex.exportPdf)",
+            "media": {
+              "markdown": "media/walkthrough/export.md"
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "scripts": {
+    "build": "node esbuild.mjs",
+    "watch": "node esbuild.mjs --watch",
+    "typecheck": "tsc -p . --noEmit && tsc -p webview --noEmit",
+    "lint": "npm run typecheck",
+    "test": "node esbuild.mjs --tests && node --test \"out/test/*.test.js\"",
+    "vscode:prepublish": "node esbuild.mjs --production",
+    "package": "vsce package --no-dependencies",
+    "test:e2e": "node esbuild.mjs && node esbuild.mjs --e2e && node out/e2e/runTest.js"
+  },
+  "dependencies": {
+    "opentype.js": "1.3.4",
+    "pdfjs-dist": "4.10.38"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "@types/vscode": "^1.85.0",
+    "@vscode/test-electron": "^3.1.0",
+    "@vscode/vsce": "^3.2.1",
+    "esbuild": "^0.24.0",
+    "typescript": "^5.6.3"
+  }
+}

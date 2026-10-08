@@ -1,0 +1,12 @@
+# Changelog
+
+## 0.1.0
+
+First release.
+
+- Live preview that re-typesets the edited paragraph through rtex's fast path and installs background layouts as they arrive.
+- Native display-list renderer for OpenType/TrueType fonts (glyph indices) and Type1/TFM fonts (through `pdftex.map`), with colors, rules, images and graphicx transforms. Pages it cannot draw exactly fall back to the background PDF, rendered by pdf.js.
+- Two-way navigation: the preview follows the cursor, and a double-click in the preview jumps to the source.
+- LaTeX errors and warnings in the Problems panel; a status pill and status bar entry that explain what the engine is doing.
+- Export PDF, recompile, restart and stop commands; automatic main-file detection.
+- Guided setup: walkthrough, **Check Setup**, one-click **Install rtex** (build from source) and an optional minimal TeX Live install.

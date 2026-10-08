@@ -1,0 +1,9 @@
+**
+!dist/extension.js
+!dist/webview.js
+!dist/pdf.worker.mjs
+!media/**
+!package.json
+!README.md
+!CHANGELOG.md
+!LICENSE
