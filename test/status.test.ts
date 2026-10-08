@@ -12,6 +12,9 @@ test('status texts', () => {
   assert.equal(describe({ ...base, phase: 'live', convergence: { state: 'PassLimitReached', passes: 5, reasons: [] } }).kind, 'warn');
   assert.equal(describe({ ...base, phase: 'live', convergence: { state: 'Converged' } }).text, 'Up to date');
   assert.match(explainReasons(['paragraph boundaries changed']), /split or merged/);
+  assert.equal(explainReasons(['DisallowedEnvironment("tabularx")', 'NoPlacement']), 'the tabularx environment is not supported by live typesetting yet');
+  assert.equal(explainReasons(['math macro \\texttt']), '\\texttt inside math is not supported by live typesetting yet');
+  assert.match(explainReasons(['NoPlacement']), /no position/);
 });
 
 test('map and encoding files', () => {

@@ -32,13 +32,17 @@ const fmtMs = (ms: number) => (ms < 10 ? ms.toFixed(1) : Math.round(ms).toString
 export function explainReasons(reasons: readonly string[]): string {
   if (reasons.length === 0) return 'the change affects more than one paragraph';
   const r = reasons.join(', ');
+  const env = /DisallowedEnvironment\("([^"]+)"\)|environment (\S+) is not on/.exec(r);
+  if (env) return `the ${env[1] ?? env[2]} environment is not supported by live typesetting yet`;
+  const macro = /(?:math )?macro (\\\S+)/.exec(r);
+  if (macro && !/preamble/i.test(r)) return `${macro[1]}${/math macro/.test(r) ? ' inside math' : ''} is not supported by live typesetting yet`;
   const map: [RegExp, string][] = [
     [/preamble/i, 'the preamble changed (the engine reloads it)'],
-    [/boundar/i, 'paragraphs were split or merged'],
+    [/ParagraphBreak|boundar/i, 'paragraphs were split or merged'],
     [/inserts/i, 'footnote text is placed with the page'],
+    [/NoPlacement/i, 'this part has no position from the last full compile yet'],
     [/no ?context|context no longer/i, 'this paragraph is new to the engine'],
     [/budget|slow|over/i, 'this paragraph takes too long to typeset live'],
-    [/macro/i, 'it uses a macro the live path cannot verify'],
     [/env/i, 'this environment is updated by the full compile'],
     [/engine restarted/i, 'the engine restarted'],
   ];

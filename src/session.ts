@@ -347,6 +347,8 @@ export class Session implements vscode.Disposable {
   }
 
   private errorRecheck: ReturnType<typeof setTimeout> | undefined;
+  private lastLoggedRoute = '';
+  private fastLog = { n: 0, totalMs: 0, at: 0 };
 
   private onEditReply(r: Reply): void {
     if (r.reply === 'error') {
@@ -367,6 +369,12 @@ export class Session implements vscode.Disposable {
     }
     if (res.routed !== 'fast') {
       this.statusValue.lastBackgroundReason = res.routed === 'preamble' ? 'the preamble changed' : explainReasons(res.reasons);
+      // say once per reason why typing here waits for the full compile
+      const key = res.reasons.join(',');
+      if (key !== this.lastLoggedRoute) {
+        this.lastLoggedRoute = key;
+        this.log.appendLine(`[edit] full compile, not live: ${this.statusValue.lastBackgroundReason} (${res.reasons.join(', ') || res.routed})`);
+      }
       this.setPending(true);
     }
   }
@@ -396,7 +404,9 @@ export class Session implements vscode.Disposable {
         }
         return;
       }
-      // bibliographies, images, packages: recompile (debounced)
+      // inputs of the document (bibliographies, images, packages): recompile (debounced).
+      // Anything else — e.g. another LaTeX tool's output next to the source — is ignored.
+      if (!isDocumentInput(file)) return;
       clearTimeout(timer);
       timer = setTimeout(() => this.recompile(), 400);
     };
@@ -454,6 +464,14 @@ export class Session implements vscode.Disposable {
         break;
       case 'ParagraphUpdate': {
         this.statusValue.lastFastMs = ev.timing.total_us / 1000;
+        this.lastLoggedRoute = '';
+        // a summary line at most every 5 s while typing
+        this.fastLog.n++;
+        this.fastLog.totalMs += ev.timing.total_us / 1000;
+        if (Date.now() - this.fastLog.at > 5000) {
+          this.log.appendLine(`[edit] live: ${this.fastLog.n} update(s), ${(this.fastLog.totalMs / this.fastLog.n).toFixed(1)} ms average`);
+          this.fastLog = { n: 0, totalMs: 0, at: Date.now() };
+        }
         this.model.applyParagraph(ev.par_id, ev.dl, ev.fragments, ev.versions.source_revision);
         this.outputEmitter.fire({ kind: 'paragraph', ev });
         this.setDiagnostics('live', ev.diagnostics);
@@ -755,6 +773,16 @@ export class Session implements vscode.Disposable {
   showScreen(s: Screen): void {
     this.setScreen(s);
   }
+}
+
+const INPUT_EXTS = /\.(bib|sty|cls|bst|bbx|cbx|lbx|cfg|def|clo|ldf|png|jpe?g|gif|eps|pdf|svg|csv|dat|lua)$/i;
+
+/** Whether a changed file can affect the compiled document. A PDF with the same name as a
+ * .tex file next to it is another tool's output, not an \includegraphics input. */
+function isDocumentInput(file: string): boolean {
+  if (!INPUT_EXTS.test(file)) return false;
+  if (/\.pdf$/i.test(file) && existsSync(file.replace(/\.pdf$/i, '.tex'))) return false;
+  return true;
 }
 
 function documentLength(doc: vscode.TextDocument): number {
