@@ -6,7 +6,7 @@ import { PreviewPanel, VIEW_TYPE } from './preview/panel';
 import { ResourceLoader } from './resources';
 import { findMainFile, isMainFile } from './root';
 import { Session } from './session';
-import { buildFromSource, checkSetup, selectServerPath } from './setup';
+import { buildFromSource, checkForRtexUpdate, checkSetup, selectServerPath, updateRtex } from './setup';
 import { StatusBar } from './statusBar';
 
 const WALKTHROUGH = 'henryxiaoyang.realtime-tex#realtimeTex.welcome';
@@ -48,6 +48,9 @@ export function activate(context: vscode.ExtensionContext): Api {
   reg('realtimeTex.openLatexLog', () => withSession((s) => s.openLatexLog(), true));
   reg('realtimeTex.checkSetup', () => checkSetup(ctx));
   reg('realtimeTex.buildFromSource', () => buildFromSource(ctx, () => void (session && session.status.phase === 'failed' ? session.restart() : undefined)));
+  // a rebuilt engine takes effect when the running (or failed) session restarts; a stopped one stays stopped
+  const restartAfterBuild = () => void (session && (session.running || session.status.phase === 'failed') ? session.restart().then(updateUi) : undefined);
+  reg('realtimeTex.updateRtex', () => updateRtex(ctx, restartAfterBuild));
   reg('realtimeTex.selectServerPath', async () => {
     if ((await selectServerPath()) && session) await session.restart();
   });
@@ -87,6 +90,9 @@ export function activate(context: vscode.ExtensionContext): Api {
   }
   updateUi();
   void welcome();
+  // look for a newer engine once things have settled
+  const updateTimer = setTimeout(() => void checkForRtexUpdate(ctx, restartAfterBuild), 15000);
+  context.subscriptions.push({ dispose: () => clearTimeout(updateTimer) });
   return { session: () => session, panel: () => panel };
 }
 

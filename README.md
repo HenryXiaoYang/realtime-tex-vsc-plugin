@@ -20,6 +20,8 @@ On first use, the preview walks you through anything that is missing:
 
 **Realtime TeX: Check Setup** in the command palette checks everything and offers a fix for each problem.
 
+The extension keeps the rtex it installed up to date. It checks once a day and offers **Update Now**. **Realtime TeX: Update rtex Engine** updates on demand: it pulls the latest realtime-tex, rebuilds it and restarts the engine. The `realtimeTex.updateCheck` setting controls this.
+
 ## Using the preview
 
 | | |
@@ -78,6 +80,7 @@ live on top.
 | `realtimeTex.serverPath` | *(auto)* | rtex binary. Empty means the one installed by **Install rtex**, then `rtex` on `PATH`. |
 | `realtimeTex.texliveBin` | *(PATH)* | Folder containing `lualatex`. |
 | `realtimeTex.texDir` | *(auto)* | rtex's `tex/` folder. Only needed if you moved the binary away from its checkout. |
+| `realtimeTex.updateCheck` | `notify` | Once a day, check realtime-tex `main` for a newer engine: `notify` offers the update, `auto` updates and rebuilds by itself, `off` never checks. The setting has an **Update rtex now** link. |
 | `realtimeTex.mainFile` | *(auto)* | Main file, relative to the workspace folder. |
 | `realtimeTex.buildDir` | *(storage)* | Where rtex keeps build files. Empty keeps them out of your project. |
 | `realtimeTex.exportPath` | `${mainDir}/${mainName}.pdf` | Where **Export PDF** writes. |
@@ -100,6 +103,7 @@ All commands are under **Realtime TeX:** in the command palette:
 - **Show Log**
 - **Check Setup**
 - **Install rtex (Build from Source)**
+- **Update rtex Engine**
 - **Locate rtex Binary…**
 - **Choose Main File…**
 - **Get Started**

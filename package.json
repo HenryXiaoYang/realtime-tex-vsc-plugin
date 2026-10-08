@@ -98,6 +98,12 @@
         "icon": "$(tools)"
       },
       {
+        "command": "realtimeTex.updateRtex",
+        "title": "Update rtex Engine",
+        "category": "Realtime TeX",
+        "icon": "$(cloud-download)"
+      },
+      {
         "command": "realtimeTex.selectServerPath",
         "title": "Locate rtex Binary\u2026",
         "category": "Realtime TeX"
@@ -210,6 +216,22 @@
           "default": "",
           "markdownDescription": "The `tex/` folder of the realtime-tex checkout (sets `RTEX_TEXDIR`). Only needed if you moved the rtex binary away from the checkout it was built in.",
           "scope": "machine-overridable"
+        },
+        "realtimeTex.updateCheck": {
+          "type": "string",
+          "enum": [
+            "notify",
+            "auto",
+            "off"
+          ],
+          "enumDescriptions": [
+            "Once a day, say when a newer realtime-tex is available and offer to update",
+            "Once a day, update and rebuild rtex by itself when a newer realtime-tex is available",
+            "Never check; update with the command only"
+          ],
+          "default": "notify",
+          "markdownDescription": "Keep the rtex engine installed by the extension up to date with [realtime-tex](https://github.com/HenryXiaoYang/realtime-tex) `main`. Updating pulls the latest source and rebuilds it (needs `git` and `cargo`), then restarts the engine.\n\n[Update rtex now](command:realtimeTex.updateRtex)",
+          "scope": "machine"
         },
         "realtimeTex.mainFile": {
           "type": "string",

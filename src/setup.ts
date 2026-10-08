@@ -7,6 +7,7 @@ import * as vscode from 'vscode';
 import { cfg, managedCheckout, processEnv, resolveServer } from './config';
 
 const REPO_URL = 'https://github.com/HenryXiaoYang/realtime-tex';
+const BRANCH = 'main';
 
 interface RunResult {
   ok: boolean;
@@ -181,49 +182,64 @@ async function runTask(name: string, cwd: string, script: string): Promise<boole
   });
 }
 
+/** Clone the managed checkout, or bring it to the latest realtime-tex main. The checkout belongs
+ * to the extension; local changes in it stop the update instead of being thrown away. */
 function cloneScript(dir: string): string {
-  return `if [ -d ${sq(path.join(dir, '.git'))} ]; then git -C ${sq(dir)} pull --ff-only; else git clone --depth 1 ${REPO_URL} ${sq(dir)}; fi`;
+  const d = sq(dir);
+  return [
+    `if [ -d ${sq(path.join(dir, '.git'))} ]; then`,
+    `  if [ -n "$(git -C ${d} status --porcelain --untracked-files=no)" ]; then echo "${dir} has local changes; not updating it." >&2; exit 3; fi;`,
+    `  git -C ${d} fetch --depth 1 origin ${BRANCH} && git -C ${d} reset --hard FETCH_HEAD;`,
+    `else git clone --depth 1 --branch ${BRANCH} ${REPO_URL} ${d}; fi`,
+  ].join(' ');
 }
 
 let building = false;
 
-export async function buildFromSource(ctx: vscode.ExtensionContext, onDone: () => void): Promise<void> {
+/** Check git and cargo; explain what is missing. */
+async function buildToolsReady(action: string): Promise<boolean> {
   if (process.platform !== 'linux' && process.platform !== 'darwin') {
     void vscode.window.showErrorMessage('rtex runs on Linux and macOS. On Windows, open your folder in WSL and install it there.');
-    return;
+    return false;
   }
   if (building) {
-    void vscode.window.showInformationMessage('rtex is already being installed — see the terminal.');
-    return;
+    void vscode.window.showInformationMessage('rtex is already being built — see the terminal.');
+    return false;
   }
   const [git, cargo] = await Promise.all([run('git', ['--version']), run('cargo', ['--version'])]);
   if (!git.ok) {
-    void vscode.window.showErrorMessage('Installing rtex needs git. Install git and try again.');
-    return;
+    void vscode.window.showErrorMessage(`${action} needs git. Install git and try again.`);
+    return false;
   }
   if (!cargo.ok) {
-    const pick = await vscode.window.showErrorMessage(
-      'rtex is built from source with Rust. Install Rust (cargo) first, then run "Install rtex" again.',
-      'Install Rust',
-    );
+    const pick = await vscode.window.showErrorMessage(`rtex is built from source with Rust. Install Rust (cargo) first, then try "${action}" again.`, 'Install Rust');
     if (pick) void vscode.env.openExternal(vscode.Uri.parse('https://rustup.rs'));
-    return;
+    return false;
   }
+  return true;
+}
+
+/** Clone or update the managed checkout and build rtex in a terminal task. */
+async function buildManaged(ctx: vscode.ExtensionContext, title: string): Promise<boolean> {
   const dir = managedCheckout(ctx);
   await fs.mkdir(path.dirname(dir), { recursive: true });
   building = true;
   try {
-    const ok = await runTask(
-      'Install rtex',
+    return await runTask(
+      title,
       path.dirname(dir),
-      `set -e; echo "Installing rtex into ${dir}"; ${cloneScript(dir)}; cd ${sq(dir)}; cargo build --release -p rtex-cli; echo; echo "rtex installed: ${path.join(dir, 'target', 'release', 'rtex')}"`,
+      `set -e; echo "${title}: ${dir}"; ${cloneScript(dir)}; cd ${sq(dir)}; git log -1 --format='realtime-tex %h %s'; cargo build --release -p rtex-cli; echo; echo "rtex built: ${path.join(dir, 'target', 'release', 'rtex')}"`,
     );
-    if (!ok) {
-      void vscode.window.showErrorMessage('Installing rtex failed. The terminal shows what went wrong.');
-      return;
-    }
   } finally {
     building = false;
+  }
+}
+
+export async function buildFromSource(ctx: vscode.ExtensionContext, onDone: () => void): Promise<void> {
+  if (!(await buildToolsReady('Install rtex'))) return;
+  if (!(await buildManaged(ctx, 'Install rtex'))) {
+    void vscode.window.showErrorMessage('Installing rtex failed. The terminal shows what went wrong.');
+    return;
   }
   if (cfg().get<string>('serverPath', '')) await cfg().update('serverPath', '', vscode.ConfigurationTarget.Global);
   const lua = await run('lualatex', ['--version'], processEnv(ctx, resolveServer(ctx)));
@@ -235,6 +251,70 @@ export async function buildFromSource(ctx: vscode.ExtensionContext, onDone: () =
   onDone();
   const pick = await vscode.window.showInformationMessage('rtex is installed and ready.', 'Open Live Preview');
   if (pick) void vscode.commands.executeCommand('realtimeTex.openPreview');
+}
+
+function isManaged(ctx: vscode.ExtensionContext): boolean {
+  return existsSync(path.join(managedCheckout(ctx), '.git'));
+}
+
+/** Update the managed rtex to the latest realtime-tex main and rebuild it. */
+export async function updateRtex(ctx: vscode.ExtensionContext, onDone: () => void): Promise<void> {
+  if (!isManaged(ctx)) {
+    const custom = cfg().get<string>('serverPath', '');
+    if (custom) {
+      const pick = await vscode.window.showInformationMessage(
+        `The rtex in use (${custom}) is not managed by the extension: update it in its own checkout and rebuild it. Or let the extension install and update its own copy.`,
+        'Install Managed Copy',
+      );
+      if (pick) await buildFromSource(ctx, onDone);
+    } else {
+      await buildFromSource(ctx, onDone);
+    }
+    return;
+  }
+  if (!(await buildToolsReady('Update rtex'))) return;
+  const dir = managedCheckout(ctx);
+  const before = (await run('git', ['-C', dir, 'rev-parse', '--short', 'HEAD'])).stdout.trim();
+  if (!(await buildManaged(ctx, 'Update rtex'))) {
+    void vscode.window.showErrorMessage('Updating rtex failed. The terminal shows what went wrong; the previous build is unchanged if the build step did not start.');
+    return;
+  }
+  void ctx.globalState.update(LAST_CHECK, Date.now());
+  const after = (await run('git', ['-C', dir, 'log', '-1', '--format=%h %s'])).stdout.trim();
+  onDone();
+  void vscode.window.showInformationMessage(
+    after.startsWith(before) ? `rtex is up to date (${after}).` : `rtex updated to ${after}. The engine was restarted.`,
+  );
+}
+
+const LAST_CHECK = 'realtimeTex.lastUpdateCheck';
+const DAY = 24 * 60 * 60 * 1000;
+
+/** Look for a newer realtime-tex (at most once a day) and act on `realtimeTex.updateCheck`. */
+export async function checkForRtexUpdate(ctx: vscode.ExtensionContext, onDone: () => void): Promise<void> {
+  const mode = cfg().get<string>('updateCheck', 'notify');
+  if (mode === 'off' || !isManaged(ctx)) return;
+  const last = ctx.globalState.get<number>(LAST_CHECK, 0);
+  if (Date.now() - last < DAY) return;
+  void ctx.globalState.update(LAST_CHECK, Date.now());
+  const dir = managedCheckout(ctx);
+  const fetch = await run('git', ['-C', dir, 'fetch', '--depth', '1', 'origin', BRANCH], undefined, 30000);
+  if (!fetch.ok) return; // offline: try again another day
+  const [head, latest] = await Promise.all([run('git', ['-C', dir, 'rev-parse', 'HEAD']), run('git', ['-C', dir, 'rev-parse', 'FETCH_HEAD'])]);
+  if (!head.ok || !latest.ok || head.stdout.trim() === latest.stdout.trim()) return;
+  if (mode === 'auto') {
+    await updateRtex(ctx, onDone);
+    return;
+  }
+  const subject = (await run('git', ['-C', dir, 'log', '-1', '--format=%s', 'FETCH_HEAD'])).stdout.trim();
+  const pick = await vscode.window.showInformationMessage(
+    `A newer rtex engine is available${subject ? `: “${subject}”` : ''}.`,
+    'Update Now',
+    'Later',
+    "Don't Check",
+  );
+  if (pick === 'Update Now') await updateRtex(ctx, onDone);
+  else if (pick === "Don't Check") await cfg().update('updateCheck', 'off', vscode.ConfigurationTarget.Global);
 }
 
 export async function installTexLive(ctx: vscode.ExtensionContext): Promise<void> {
