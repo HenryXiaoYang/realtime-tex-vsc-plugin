@@ -106,6 +106,42 @@ export class Session implements vscode.Disposable {
     return path.join(this.buildDir, 'bg', path.basename(this.mainRel, path.extname(this.mainRel)) + '.pdf');
   }
 
+  /**
+   * rtex (≤ 0.0.2) copies the project into `<build>/src` before every full compile (and into
+   * `<build>/export-src` before an export), but creates
+   * no folders while doing so: a project with any subfolder fails with "snapshot: No such file
+   * or directory". Create the folders it will copy into (same rules: depth ≤ 8, skipping
+   * hidden, `build` and `target`).
+   */
+  private async mirrorProjectFolders(): Promise<void> {
+    const dsts = [path.join(this.buildDir, 'src'), path.join(this.buildDir, 'export-src')];
+    const walk = async (rel: string, depth: number): Promise<void> => {
+      if (depth > 8) return;
+      let entries: import('fs').Dirent[];
+      try {
+        entries = await fs.readdir(path.join(this.projectRoot, rel), { withFileTypes: true });
+      } catch {
+        return;
+      }
+      for (const e of entries) {
+        if (e.name.startsWith('.') || e.name === 'build' || e.name === 'target') continue;
+        // rtex follows symlinks to folders as well
+        const isDir = e.isDirectory() || (e.isSymbolicLink() && (await fs.stat(path.join(this.projectRoot, rel, e.name)).catch(() => undefined))?.isDirectory());
+        if (!isDir) continue;
+        const sub = path.join(rel, e.name);
+        if (path.join(this.projectRoot, sub) === this.buildDir) continue;
+        for (const dst of dsts) await fs.mkdir(path.join(dst, sub), { recursive: true });
+        await walk(sub, depth + 1);
+      }
+    };
+    try {
+      for (const dst of dsts) await fs.mkdir(dst, { recursive: true });
+      await walk('', 0);
+    } catch (e) {
+      this.log.appendLine(`[start] could not prepare the build folders: ${(e as Error).message}`);
+    }
+  }
+
   /** The log of the background compile (LuaLaTeX's own .log). */
   get latexLogPath(): string {
     return path.join(this.buildDir, 'bg', path.basename(this.mainRel, path.extname(this.mainRel)) + '.log');
@@ -146,6 +182,7 @@ export class Session implements vscode.Disposable {
       return;
     }
     await fs.mkdir(this.buildDir, { recursive: true });
+    await this.mirrorProjectFolders();
     const env = processEnv(this.ctx, this.server);
     this.log.appendLine(`[start] ${this.server.path} serve --project ${this.projectRoot} --main ${this.mainRel} --build ${this.buildDir}`);
     if (env.RTEX_TEXLIVE_BIN) this.log.appendLine(`[start] TeX Live: ${env.RTEX_TEXLIVE_BIN}`);
@@ -342,6 +379,10 @@ export class Session implements vscode.Disposable {
     const changed = async (uri: vscode.Uri) => {
       const file = uri.fsPath;
       if (file.startsWith(this.buildDir) || /[\\/](build|\.git|node_modules)[\\/]/.test(path.relative(this.projectRoot, file))) return;
+      if ((await fs.stat(file).catch(() => undefined))?.isDirectory()) {
+        await this.mirrorProjectFolders();
+        return;
+      }
       if (/\.(aux|log|pdf|synctex\.gz|fls|fdb_latexmk|out|toc|bbl|blg|bcf|run\.xml)$/i.test(file)) return;
       const rel = path.relative(this.projectRoot, file).split(path.sep).join('/');
       const open = vscode.workspace.textDocuments.find((d) => d.fileName === file);
@@ -487,7 +528,9 @@ export class Session implements vscode.Disposable {
     if (!fail) return;
     const msg = fail.message;
     let advice = 'The full compile could not run.';
-    if (/produced no .*rtex\.json/i.test(msg)) {
+    if (/^snapshot:/.test(msg)) {
+      advice = `rtex could not copy the project folder into its build folder (${this.buildDir}).`;
+    } else if (/produced no .*rtex\.json/i.test(msg)) {
       advice =
         "LuaLaTeX ran but rtex's capture did not. This usually means LuaLaTeX is older than TeX Live 2026, rtex's tex/ folder was not found, or LaTeX stopped at an error before \\begin{document}.";
     } else if (/spawning lualatex|No such file/i.test(msg)) {

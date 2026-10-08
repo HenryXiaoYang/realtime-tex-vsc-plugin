@@ -11,3 +11,4 @@ First release.
 - Export PDF, recompile, restart and stop commands; automatic main-file detection.
 - Guided setup: walkthrough, **Check Setup**, one-click **Install rtex** (build from source) and an optional minimal TeX Live install.
 - A first compile that fails or takes long explains itself (with the LaTeX log one click away) instead of waiting silently.
+- Projects with subfolders work: rtex (≤ 0.0.2) does not create folders when it copies the project for a compile ("snapshot: No such file or directory"), so the extension creates them first.
