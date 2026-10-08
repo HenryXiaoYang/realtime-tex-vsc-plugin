@@ -15,6 +15,7 @@ test('status texts', () => {
   assert.equal(explainReasons(['DisallowedEnvironment("tabularx")', 'NoPlacement']), 'the tabularx environment is not supported by live typesetting yet');
   assert.equal(explainReasons(['math macro \\texttt']), '\\texttt inside math is not supported by live typesetting yet');
   assert.match(explainReasons(['NoPlacement']), /no position/);
+  assert.match(explainReasons(['unverified: row 2 differs']), /did not match the last full compile/);
 });
 
 test('map and encoding files', () => {

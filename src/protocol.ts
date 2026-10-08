@@ -47,6 +47,10 @@ export interface ImageInfo {
   file: string;
   page?: number;
   pages?: number;
+  /** A TikZ picture the background pass reused from an earlier pass's PDF (the page is
+   * degraded and drawn from the PDF); `bbox` is its region there. */
+  cached_picture?: boolean;
+  bbox?: [number, number, number, number];
 }
 
 export interface DisplayList {

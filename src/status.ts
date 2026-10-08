@@ -32,6 +32,11 @@ const fmtMs = (ms: number) => (ms < 10 ? ms.toFixed(1) : Math.round(ms).toString
 export function explainReasons(reasons: readonly string[]): string {
   if (reasons.length === 0) return 'the change affects more than one paragraph';
   const r = reasons.join(', ');
+  // probe mode: the part was compared with the last full compile and did not match (or could not be)
+  if (/unverified:/.test(r)) return 'this part did not match the last full compile when typeset live, so it waits for the full compile';
+  if (/quarantin/i.test(r)) return 'this part stopped the live engine once, so it waits for the full compile until the preamble changes';
+  if (/SetupStatement|setup statement/i.test(r)) return 'it changes the document setup (handled like a preamble change)';
+  if (/leak/i.test(r)) return 'it changes definitions outside itself';
   const env = /DisallowedEnvironment\("([^"]+)"\)|environment (\S+) is not on/.exec(r);
   if (env) return `the ${env[1] ?? env[2]} environment is not supported by live typesetting yet`;
   const macro = /(?:math )?macro (\\\S+)/.exec(r);

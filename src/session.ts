@@ -5,7 +5,7 @@ import { existsSync, promises as fs } from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import { PreviewModel } from '../webview/model';
-import { buildDirFor, exportPathFor, processEnv, resolveServer, ServerLocation } from './config';
+import { buildDirFor, engineArgs, exportPathFor, processEnv, resolveServer, ServerLocation } from './config';
 import { ShadowText } from './edits';
 import type { Action, ScreenKind } from './messages';
 import type {
@@ -106,42 +106,6 @@ export class Session implements vscode.Disposable {
     return path.join(this.buildDir, 'bg', path.basename(this.mainRel, path.extname(this.mainRel)) + '.pdf');
   }
 
-  /**
-   * rtex (≤ 0.0.2) copies the project into `<build>/src` before every full compile (and into
-   * `<build>/export-src` before an export), but creates
-   * no folders while doing so: a project with any subfolder fails with "snapshot: No such file
-   * or directory". Create the folders it will copy into (same rules: depth ≤ 8, skipping
-   * hidden, `build` and `target`).
-   */
-  private async mirrorProjectFolders(): Promise<void> {
-    const dsts = [path.join(this.buildDir, 'src'), path.join(this.buildDir, 'export-src')];
-    const walk = async (rel: string, depth: number): Promise<void> => {
-      if (depth > 8) return;
-      let entries: import('fs').Dirent[];
-      try {
-        entries = await fs.readdir(path.join(this.projectRoot, rel), { withFileTypes: true });
-      } catch {
-        return;
-      }
-      for (const e of entries) {
-        if (e.name.startsWith('.') || e.name === 'build' || e.name === 'target') continue;
-        // rtex follows symlinks to folders as well
-        const isDir = e.isDirectory() || (e.isSymbolicLink() && (await fs.stat(path.join(this.projectRoot, rel, e.name)).catch(() => undefined))?.isDirectory());
-        if (!isDir) continue;
-        const sub = path.join(rel, e.name);
-        if (path.join(this.projectRoot, sub) === this.buildDir) continue;
-        for (const dst of dsts) await fs.mkdir(path.join(dst, sub), { recursive: true });
-        await walk(sub, depth + 1);
-      }
-    };
-    try {
-      for (const dst of dsts) await fs.mkdir(dst, { recursive: true });
-      await walk('', 0);
-    } catch (e) {
-      this.log.appendLine(`[start] could not prepare the build folders: ${(e as Error).message}`);
-    }
-  }
-
   /** The log of the background compile (LuaLaTeX's own .log). */
   get latexLogPath(): string {
     return path.join(this.buildDir, 'bg', path.basename(this.mainRel, path.extname(this.mainRel)) + '.log');
@@ -182,14 +146,14 @@ export class Session implements vscode.Disposable {
       return;
     }
     await fs.mkdir(this.buildDir, { recursive: true });
-    await this.mirrorProjectFolders();
     const env = processEnv(this.ctx, this.server);
-    this.log.appendLine(`[start] ${this.server.path} serve --project ${this.projectRoot} --main ${this.mainRel} --build ${this.buildDir}`);
+    this.log.appendLine(`[start] ${this.server.path} serve --project ${this.projectRoot} --main ${this.mainRel} --build ${this.buildDir}${engineArgs(vscode.Uri.file(this.mainFile)).map((a) => ' ' + a).join('')}`);
     if (env.RTEX_TEXLIVE_BIN) this.log.appendLine(`[start] TeX Live: ${env.RTEX_TEXLIVE_BIN}`);
     execFile('lualatex', ['--version'], { env, timeout: 10000 }, (err, stdout) => {
       this.log.appendLine(`[start] ${err ? `lualatex --version failed: ${err.message}` : String(stdout).split('\n')[0]}`);
     });
-    const proc = new RtexProcess({ serverPath: this.server.path, projectRoot: this.projectRoot, mainFile: this.mainRel, buildDir: this.buildDir, env });
+    const extraArgs = engineArgs(vscode.Uri.file(this.mainFile));
+    const proc = new RtexProcess({ serverPath: this.server.path, projectRoot: this.projectRoot, mainFile: this.mainRel, buildDir: this.buildDir, extraArgs, env });
     this.proc = proc;
     proc.on('event', (ev: RtexEvent) => this.onEvent(ev));
     proc.on('stderr', (line: string) => this.log.appendLine(line));
@@ -387,10 +351,7 @@ export class Session implements vscode.Disposable {
     const changed = async (uri: vscode.Uri) => {
       const file = uri.fsPath;
       if (file.startsWith(this.buildDir) || /[\\/](build|\.git|node_modules)[\\/]/.test(path.relative(this.projectRoot, file))) return;
-      if ((await fs.stat(file).catch(() => undefined))?.isDirectory()) {
-        await this.mirrorProjectFolders();
-        return;
-      }
+      if ((await fs.stat(file).catch(() => undefined))?.isDirectory()) return;
       if (/\.(aux|log|pdf|synctex\.gz|fls|fdb_latexmk|out|toc|bbl|blg|bcf|run\.xml)$/i.test(file)) return;
       const rel = path.relative(this.projectRoot, file).split(path.sep).join('/');
       const open = vscode.workspace.textDocuments.find((d) => d.fileName === file);
@@ -463,6 +424,12 @@ export class Session implements vscode.Disposable {
         this.onLayout(ev);
         break;
       case 'ParagraphUpdate': {
+        if (ev.status === 'removed') {
+          // the span is gone (merged into its neighbour): hide its rows until the next layout
+          this.model.applyParagraph(ev.par_id, ev.dl, [], ev.versions.source_revision);
+          this.outputEmitter.fire({ kind: 'paragraph', ev });
+          break;
+        }
         this.statusValue.lastFastMs = ev.timing.total_us / 1000;
         this.lastLoggedRoute = '';
         // a summary line at most every 5 s while typing
@@ -485,10 +452,7 @@ export class Session implements vscode.Disposable {
         for (const d of ev.items) {
           this.log.appendLine(`[${ev.source}] ${d.severity}${d.file ? ` ${d.file}${d.line ? `:${d.line}` : ''}` : ''}: ${d.message}`);
         }
-        if (ev.source === 'background') {
-          this.bgDiagnosticsThisPass = true;
-          this.onPassFailure(ev.items);
-        }
+        if (ev.source === 'background') this.bgDiagnosticsThisPass = true;
         this.setDiagnostics(ev.source, ev.items);
         break;
       case 'BackgroundScheduled':
@@ -508,6 +472,10 @@ export class Session implements vscode.Disposable {
     this.log.appendLine(
       `[layout] v${ev.versions.layout_version}: ${ev.pages_total} pages (${ev.pages_changed.length} changed), ${ev.compile.state}, ${ev.convergence.state}, ${ev.wall_ms} ms`,
     );
+    if (ev.compile.state === 'Failed') {
+      this.onFailedPass(ev);
+      return;
+    }
     if (!this.bgDiagnosticsThisPass) this.setDiagnostics('background', []);
     this.bgDiagnosticsThisPass = false;
     this.setDiagnostics('live', []);
@@ -519,57 +487,57 @@ export class Session implements vscode.Disposable {
     const settled = ev.convergence.state === 'Converged' || ev.convergence.state === 'PassLimitReached';
     if (settled || (ev.convergence.state === 'Converging' && ev.compile.state !== 'Ok')) this.setPending(false, false);
     this.spansCache.clear();
-    if (ev.pages_total === 0) {
-      const first = this.firstError();
-      this.setPhase('live');
-      this.setScreen({
-        screen: 'error',
-        title: 'The document produced no pages',
-        message: first
-          ? `LaTeX stopped with an error${first.line ? ` on line ${first.line}` : ''}${first.file ? ` of ${first.file}` : ''}:\n${first.message}`
-          : 'The full compile did not produce any page. The log has the details.',
-        actions: [ACTIONS.problems, ACTIONS.showLog, ACTIONS.recompile],
-      });
-    } else {
-      this.setPhase('live');
-      this.setScreen({ screen: null });
-    }
+    this.setPhase('live');
+    this.setScreen({ screen: null });
+    this.outputEmitter.fire({ kind: 'banner', text: null });
     this.emitStatus();
     this.outputEmitter.fire({ kind: 'layout', ev, keepFromRevision, pdfPath: ev.pdf_fallback ?? this.pdfPath });
   }
 
-  /** rtex reports a background pass that could not run at all (no layout follows) as a
-   * diagnostic without file and line. Before the first layout that would leave the preview
-   * waiting forever: show what went wrong instead. */
-  private onPassFailure(items: RtexDiagnostic[]): void {
-    const fail = items.find((d) => d.severity === 'error' && !d.file && !d.line);
-    if (!fail) return;
-    const msg = fail.message;
-    let advice = 'The full compile could not run.';
-    if (/^snapshot:/.test(msg)) {
-      advice = `rtex could not copy the project folder into its build folder (${this.buildDir}).`;
-    } else if (/produced no .*rtex\.json/i.test(msg)) {
-      advice =
-        "LuaLaTeX ran but rtex's capture did not. This usually means LuaLaTeX is older than TeX Live 2026, rtex's tex/ folder was not found, or LaTeX stopped at an error before \\begin{document}.";
-    } else if (/spawning lualatex|No such file/i.test(msg)) {
-      advice = 'LuaLaTeX could not be started.';
+  /**
+   * A full compile that produced no pages (`compile: Failed`). rtex keeps the previous layout
+   * current, so the preview keeps its pages and says what went wrong; before the first layout
+   * it shows the failure instead of the pages. A pass that could not run at all (passes = 0)
+   * names the cause in its convergence reasons; otherwise LaTeX stopped with an error.
+   */
+  private onFailedPass(ev: LayoutUpdateEvent): void {
+    if (!this.bgDiagnosticsThisPass) this.setDiagnostics('background', []);
+    this.bgDiagnosticsThisPass = false;
+    this.statusValue.compile = ev.compile;
+    this.statusValue.convergence = ev.convergence;
+    this.setPending(false, false);
+    const reason = ev.convergence.state === 'PassLimitReached' && ev.passes === 0 ? ev.convergence.reasons.join('\n') : '';
+    const first = this.firstError();
+    let advice: string;
+    let detail: string | undefined;
+    if (reason) {
+      // the pass could not run (e.g. LuaLaTeX could not start, the capture did not load)
+      detail = reason.length > 3000 ? '…' + reason.slice(-3000) : reason;
+      const texError = reason.split('\n').find((l) => /^! /.test(l.trim()) || /:\d+: /.test(l));
+      if (texError) advice = `LaTeX stopped: ${texError.trim()}`;
+      else if (/produced no .*rtex\.json/i.test(reason)) {
+        advice =
+          "LuaLaTeX ran but rtex's capture did not. This usually means LuaLaTeX is older than TeX Live 2026, rtex's tex/ folder was not found, or LaTeX stopped before \\begin{document}.";
+      } else if (/spawning lualatex/i.test(reason)) advice = 'LuaLaTeX could not be started.';
+      else advice = `The full compile could not run: ${firstLine(reason)}`;
+    } else if (first) {
+      advice = `LaTeX stopped with an error${first.line ? ` on line ${first.line}` : ''}${first.file ? ` of ${first.file}` : ''}:\n${first.message}`;
+    } else {
+      advice = 'The full compile did not produce any page. The LaTeX log has the details.';
     }
-    // LuaLaTeX's own error line (e.g. "! LaTeX Error: File `x.sty' not found.") says the most
-    const texError = msg.split('\n').find((l) => /^! /.test(l.trim()) || /:\d+: /.test(l));
-    if (texError) advice = `LaTeX stopped: ${texError.trim()}`;
     const actions: Action[] = [
       { label: 'Open LaTeX Log', command: 'realtimeTex.openLatexLog', primary: true },
+      ACTIONS.problems,
       ACTIONS.showLog,
-      ACTIONS.checkSetup,
       ACTIONS.recompile,
     ];
+    this.setPhase('live');
     if (!this.model.hasLayout) {
-      this.setPhase('live');
-      this.setScreen({ screen: 'error', title: 'The first compile failed', message: advice, detail: msg.length > 3000 ? '…' + msg.slice(-3000) : msg, actions });
+      this.setScreen({ screen: 'error', title: 'The document produced no pages', message: advice, detail, actions });
     } else {
-      this.outputEmitter.fire({ kind: 'banner', level: 'error', text: `The last full compile failed: ${firstLine(msg)}`, actions });
+      this.outputEmitter.fire({ kind: 'banner', level: 'error', text: `The last full compile failed. ${firstLine(advice)} The preview shows the previous result.`, actions });
     }
-    this.setPending(false);
+    this.emitStatus();
   }
 
   private firstError(): RtexDiagnostic | undefined {

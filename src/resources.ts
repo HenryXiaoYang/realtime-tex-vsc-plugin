@@ -40,7 +40,8 @@ export class ResourceLoader {
     const want = new Set<string>();
     for (const dl of dls) {
       for (const info of Object.values(dl.images_info ?? {})) {
-        if (info.file && !have.has(info.file)) want.add(info.file);
+        // cached pictures live in the pass PDF, which draws their (degraded) page
+        if (info.file && !info.cached_picture && !have.has(info.file)) want.add(info.file);
       }
     }
     const out = new Map<string, ImageResource>();

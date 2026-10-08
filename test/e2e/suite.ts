@@ -119,23 +119,42 @@ async function steps(): Promise<void> {
   if (!pdf || !existsSync(pdf)) throw new Error(`export produced no PDF (${pdf})`);
   step(`exported ${path.basename(pdf)}`);
 
-  // 7. closing the preview stops the engine
+  // 7. a full compile that fails after the first layout keeps the pages. RTEX_E2E_SKIP_FAILED_PASS=1
+  // skips it: rtex at e5cab6a reports the body-only pass after a breaking preamble edit as Ok
+  // with the previous pages
+  if (!process.env.RTEX_E2E_SKIP_FAILED_PASS) {
+    const pagesBefore = s.model.pagesTotal;
+    await insertAfter(main, '\\usepackage{tikz}', '\n\\stop');
+    await waitFor('a failed full compile', () => s.status.compile?.state === 'Failed', 120000);
+    if (s.model.pagesTotal !== pagesBefore) throw new Error(`pages dropped: ${pagesBefore} -> ${s.model.pagesTotal}`);
+    step(`failed compile kept the ${pagesBefore} page(s) on screen`);
+    await sleep(800);
+    await screenshot('4b-failed-pass-banner.png');
+    const ed3 = await vscode.window.showTextDocument(main, vscode.ViewColumn.One);
+    const bad = main.getText().indexOf('\n\\stop');
+    await ed3.edit((e) => e.delete(new vscode.Range(main.positionAt(bad), main.positionAt(bad + '\n\\stop'.length))));
+    await waitFor('a good full compile again', () => s.status.compile?.state === 'Ok', 120000);
+    step('recovered after the preamble was fixed');
+  }
+
+  // 8. closing the preview stops the engine
   api.panel()!.panel.dispose();
   await waitFor('the engine to stop', () => !s.running, 10000);
   step('engine stopped when the preview closed');
 
-  // 8. a document whose first compile fails explains why instead of waiting forever
+  // 9. a document whose first compile fails explains why instead of waiting forever
   const broken = path.join(folder, 'broken.tex');
   await vscode.workspace.fs.writeFile(
     vscode.Uri.file(broken),
-    Buffer.from('\\documentclass{article}\n\\usepackage{doesnotexist}\n\\begin{document}\nHello\n\\end{document}\n'),
+    // \stop ends the run in the preamble: no page at all
+    Buffer.from('\\documentclass{article}\n\\stop\n\\begin{document}\nHello\n\\end{document}\n'),
   );
   await vscode.window.showTextDocument(await vscode.workspace.openTextDocument(broken), vscode.ViewColumn.One);
   await vscode.commands.executeCommand('realtimeTex.openPreview');
   await waitFor('a session for broken.tex', () => api.session()?.mainFile === broken, 10000);
   const sb = api.session()!;
   await waitFor('the failure screen', () => sb.screen.screen === 'error', 120000);
-  if (!/doesnotexist\.sty/.test(sb.screen.message ?? '')) throw new Error(`unexpected message: ${sb.screen.message}`);
+  if (sb.screen.title !== 'The document produced no pages' || !sb.screen.message) throw new Error(`unexpected screen: ${JSON.stringify(sb.screen)}`);
   step(`failed first compile explained: ${sb.screen.message}`);
   await sleep(800);
   await screenshot('5-first-compile-failed.png');

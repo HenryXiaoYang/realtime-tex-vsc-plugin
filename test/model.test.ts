@@ -81,3 +81,12 @@ test('source map lookups', () => {
   assert.equal(hit?.parId, 7);
   assert.equal(hitTest(placed, 3, 0), undefined);
 });
+
+test('a removed span hides its rows and draws nothing', () => {
+  const m = setup();
+  const empty = dl([], '');
+  m.applyParagraph(5, empty, [], 4);
+  assert.deepEqual([...m.hiddenLines(1)].sort(), [1, 2]);
+  assert.deepEqual([...m.hiddenLines(2)], [0]);
+  assert.equal(m.overlaysOn(1).length, 0);
+});

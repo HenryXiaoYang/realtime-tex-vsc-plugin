@@ -152,7 +152,9 @@ export function imageInfo(dl: DisplayList, index: number): ImageInfo | undefined
   if (!infos) return undefined;
   const direct = infos[String(index)];
   if (direct) return direct;
+  // cached pictures are not LuaTeX images: leave them out of the ranking
   const sorted = Object.keys(infos)
+    .filter((k) => !infos[k].cached_picture)
     .map(Number)
     .sort((a, b) => a - b);
   const key = sorted[index - 1];
