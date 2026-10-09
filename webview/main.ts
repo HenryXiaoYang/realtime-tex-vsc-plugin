@@ -278,8 +278,10 @@ async function renderPage(n: number): Promise<void> {
   let pdfFailed = false;
   const overlays = model.overlaysOn(n);
   // cached TikZ pictures inside live units: their pixels as the page shows them, taken before
-  // anything is cleared and put back where the live rows place them
-  let pictureSnaps: { img: ImageData; dst: Rect }[] = [];
+  // anything is cleared and put back where the live rows place them. `src` is where the page
+  // (the last full compile) drew the picture; it is cleared so a picture the edit moved does
+  // not stay behind at its old place while its copy is drawn at the new one (two graphs).
+  let pictureSnaps: { img: ImageData; src: Rect; dst: Rect }[] = [];
   if (usePdf && doc) {
     try {
       await renderPdfPage(doc, n, ctx, w, h);
@@ -293,7 +295,7 @@ async function renderPage(n: number): Promise<void> {
       pictureSnaps = overlays.flatMap(({ rows }) =>
         cachedPictureMoves(pu.dl, rows).flatMap(({ src, dst }) => {
           const img = grabRect(ctx, base, src);
-          return img ? [{ img, dst }] : [];
+          return img ? [{ img, src, dst }] : [];
         }),
       );
     }
@@ -310,6 +312,17 @@ async function renderPage(n: number): Promise<void> {
     }
   } else {
     drawDisplayList();
+  }
+  // clear each moved picture's old place (where the page drew it) before anything live is
+  // drawn: the picture is stamped at its new place below and the live rows may now run
+  // through its old place (a sentence that wrapped onto more lines), so the clear must not
+  // come after them
+  const moved = pictureSnaps.filter(({ src, dst }) => Math.abs(src.x - dst.x) > 1 || Math.abs(src.y - dst.y) > 1);
+  if (moved.length) {
+    new Painter(ctx, base, fonts, images).clearRects(
+      moved.map(({ src }) => [src.x, src.y, src.x + src.w, src.y + src.h] as [number, number, number, number]),
+      '#fff',
+    );
   }
   for (const { overlay, rows } of overlays) {
     const p = new Painter(ctx, base, fonts, images);
