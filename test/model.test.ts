@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import type { DisplayList, Fragment, Line, PageUpdate } from '../src/protocol';
-import { PreviewModel, reanchor } from '../webview/model';
+import { cachedPicture, cachedPictureMoves, PreviewModel, reanchor } from '../webview/model';
 import { hitTest, spanAt, targetInFragments } from '../src/sourceMap';
 
 // coordinates in points, stored in sp
@@ -89,4 +89,22 @@ test('a removed span hides its rows and draws nothing', () => {
   assert.deepEqual([...m.hiddenLines(1)].sort(), [1, 2]);
   assert.deepEqual([...m.hiddenLines(2)], [0]);
   assert.equal(m.overlaysOn(1).length, 0);
+});
+
+test('cached pictures in a live unit move with their row', () => {
+  assert.deepEqual(cachedPicture(['u', 'cached_picture', '3 100 200 300 400']), { index: 3, x: 100, y: 200, w: 300, h: 400 });
+  assert.equal(cachedPicture(['u', 'pdf_literal', 'x']), undefined);
+  assert.equal(cachedPicture(['g', 1, 65, 3, 0, 0, 0, 0]), undefined);
+  // page: the picture at (10, 50) pt, 80 × 30 pt; another picture elsewhere of a different size
+  const page = dl([
+    line(10, 80, { items: [['u', 'cached_picture', `7 ${10 * U} ${50 * U} ${80 * U} ${30 * U}`]] }),
+    line(10, 300, { items: [['u', 'cached_picture', `8 ${10 * U} ${270 * U} ${40 * U} ${20 * U}`]] }),
+  ]);
+  // live unit: the same picture in the unit's frame, its row moved 12 pt down by a longer sentence
+  const unitLine = line(0, 30, { items: [['u', 'cached_picture', `7 0 0 ${80 * U} ${30 * U}`]] });
+  const moves = cachedPictureMoves(page, [{ line: unitLine, dx: 10 * U, dy: 62 * U }]);
+  assert.deepEqual(moves, [{ src: { x: 10 * U, y: 50 * U, w: 80 * U, h: 30 * U }, dst: { x: 10 * U, y: 62 * U, w: 80 * U, h: 30 * U } }]);
+  // no counterpart of that size on the page: nothing to carry
+  const other = line(0, 30, { items: [['u', 'cached_picture', `9 0 0 ${5 * U} ${5 * U}`]] });
+  assert.deepEqual(cachedPictureMoves(page, [{ line: other, dx: 0, dy: 0 }]), []);
 });

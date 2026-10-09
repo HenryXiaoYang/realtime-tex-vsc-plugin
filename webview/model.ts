@@ -1,6 +1,6 @@
 // Preview state: background pages plus fast-path overlays (realtime-tex docs/VERSIONING.md).
 // Pure module (no DOM), unit-tested with node:test.
-import type { DisplayList, Fragment, Line, PageUpdate, Placement } from '../src/protocol';
+import type { DisplayList, Fragment, Item, Line, PageUpdate, Placement } from '../src/protocol';
 
 export interface Overlay {
   parId: number;
@@ -191,4 +191,60 @@ export function reanchor(placed: readonly Fragment[], rows: readonly Line[]): Fr
     frags.push({ page, first_line: first + 1, last_line: i, x: xs[0], xs, baselines, approximate });
   }
   return frags;
+}
+
+/** A rectangle in sp. */
+export interface Rect {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+/** A picture rtex reused from its picture cache: `["u", "cached_picture", "<index> <x> <top> <width> <height>"]`
+ * (rtex f345c45; sp, in the list's frame). Undefined for any other item. */
+export function cachedPicture(it: Item): (Rect & { index: number }) | undefined {
+  if (it[0] !== 'u' || it[1] !== 'cached_picture') return undefined;
+  const raw = it[2];
+  const v = (Array.isArray(raw) ? raw : String(raw ?? '').trim().split(/\s+/)).map(Number);
+  if (v.length < 5 || !v.every(Number.isFinite)) return undefined;
+  const [index, x, y, w, h] = v;
+  return w > 0 && h > 0 ? { index, x, y, w, h } : undefined;
+}
+
+/**
+ * Where the cached pictures of a live unit were on the page (`src`, from the page's display
+ * list) and where they are now (`dst`, the unit's item moved by its row's translation). A
+ * live compile carries a cached picture only as an item; its pixels come from the page as the
+ * last layout drew it, so they are carried over to the new position. Pairs by picture index,
+ * else by size; a picture with no counterpart on the page is skipped.
+ */
+export function cachedPictureMoves(page: DisplayList, rows: readonly OverlayRow[]): { src: Rect; dst: Rect }[] {
+  const onPage: (Rect & { index: number })[] = [];
+  for (const it of page.other ?? []) {
+    const c = cachedPicture(it);
+    if (c) onPage.push(c);
+  }
+  for (const line of page.lines) {
+    for (const it of line.items) {
+      const c = cachedPicture(it);
+      if (c) onPage.push(c);
+    }
+  }
+  const used = new Set<number>();
+  const out: { src: Rect; dst: Rect }[] = [];
+  for (const { line, dx, dy } of rows) {
+    for (const it of line.items) {
+      const c = cachedPicture(it);
+      if (!c) continue;
+      const same = (k: number) => !used.has(k) && Math.abs(onPage[k].w - c.w) <= 2 && Math.abs(onPage[k].h - c.h) <= 2;
+      let k = onPage.findIndex((p, i) => p.index === c.index && same(i));
+      if (k < 0) k = onPage.findIndex((_, i) => same(i));
+      if (k < 0) continue;
+      used.add(k);
+      const p = onPage[k];
+      out.push({ src: { x: p.x, y: p.y, w: p.w, h: p.h }, dst: { x: c.x + dx, y: c.y + dy, w: c.w, h: c.h } });
+    }
+  }
+  return out;
 }

@@ -1,7 +1,7 @@
 // The live preview webview: toolbar, guided state screens, lazily rendered pages.
 import type { Action, HostToWebview, PillKind, ScreenKind, WebviewToHost } from '../src/messages';
 import { SP_PER_BP } from '../src/protocol';
-import { PreviewModel } from './model';
+import { cachedPictureMoves, PreviewModel, Rect } from './model';
 import { initPdfWorker, openPdf, PdfDoc, rasterizePdfImage, renderPdfPage } from './pdf';
 import { FontStore, ImageStore, inexactReason, Mat, Painter } from './render';
 
@@ -276,6 +276,10 @@ async function renderPage(n: number): Promise<void> {
     for (const line of lines) p.draw(pu.dl, line.items);
   };
   let pdfFailed = false;
+  const overlays = model.overlaysOn(n);
+  // cached TikZ pictures inside live units: their pixels as the page shows them, taken before
+  // anything is cleared and put back where the live rows place them
+  let pictureSnaps: { img: ImageData; dst: Rect }[] = [];
   if (usePdf && doc) {
     try {
       await renderPdfPage(doc, n, ctx, w, h);
@@ -285,6 +289,14 @@ async function renderPage(n: number): Promise<void> {
       post({ type: 'log', message: `pdf page ${n}: ${String(e)}` });
     }
     if (renderToken.get(n) !== token) return;
+    if (!pdfFailed) {
+      pictureSnaps = overlays.flatMap(({ rows }) =>
+        cachedPictureMoves(pu.dl, rows).flatMap(({ src, dst }) => {
+          const img = grabRect(ctx, base, src);
+          return img ? [{ img, dst }] : [];
+        }),
+      );
+    }
     if (pdfFailed) {
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.fillStyle = '#fff';
@@ -299,7 +311,7 @@ async function renderPage(n: number): Promise<void> {
   } else {
     drawDisplayList();
   }
-  for (const { overlay, rows } of model.overlaysOn(n)) {
+  for (const { overlay, rows } of overlays) {
     const p = new Painter(ctx, base, fonts, images);
     // the unit's rows may now reach into following material (until the next layout): clear
     // the band each row occupies, from the previous row's depth down to its own
@@ -307,6 +319,7 @@ async function renderPage(n: number): Promise<void> {
     p.draw(overlay.dl, overlay.dl.other ?? []);
     for (const r of rows) p.draw(overlay.dl, r.line.items, r.dx, r.dy);
   }
+  for (const { img, dst } of pictureSnaps) putRect(ctx, base, img, dst);
   if (renderToken.get(n) !== token) return;
   const old = el.querySelector('canvas')!;
   canvas.style.width = el.style.width;
@@ -327,6 +340,26 @@ async function renderPage(n: number): Promise<void> {
 }
 
 const PT = 65536;
+
+/** Device-pixel rectangle of an sp rectangle under the page's base matrix (scale only). */
+function deviceRect(base: Mat, r: Rect): [number, number, number, number] {
+  const x = Math.round(r.x * base[0] + base[4]);
+  const y = Math.round(r.y * base[3] + base[5]);
+  return [x, y, Math.max(0, Math.round((r.x + r.w) * base[0] + base[4]) - x), Math.max(0, Math.round((r.y + r.h) * base[3] + base[5]) - y)];
+}
+
+/** The pixels of `r` (sp) on the canvas, or undefined when it is empty or off the canvas. */
+function grabRect(ctx: CanvasRenderingContext2D, base: Mat, r: Rect): ImageData | undefined {
+  const [x, y, w, h] = deviceRect(base, r);
+  if (w < 1 || h < 1 || x >= ctx.canvas.width || y >= ctx.canvas.height || x + w <= 0 || y + h <= 0) return undefined;
+  return ctx.getImageData(x, y, w, h);
+}
+
+/** Put pixels taken by grabRect at the top-left of `r` (sp); putImageData ignores the transform. */
+function putRect(ctx: CanvasRenderingContext2D, base: Mat, img: ImageData, r: Rect): void {
+  const [x, y] = deviceRect(base, r);
+  ctx.putImageData(img, x, y);
+}
 
 /** Rectangles [x0, y0, x1, y1] (sp) covering each overlay row and the gap above it. */
 function rowBands(rows: { line: { x: number; y: number; w: number; h: number; d: number }; dx: number; dy: number }[]): [number, number, number, number][] {
