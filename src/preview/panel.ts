@@ -248,6 +248,7 @@ export class PreviewPanel implements vscode.Disposable {
         await cfg().update('syncCursor', m.value, vscode.ConfigurationTarget.Global);
         break;
       case 'error':
+      case 'log':
         this.host.log.appendLine(`[preview] ${m.message}`);
         break;
     }

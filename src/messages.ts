@@ -39,4 +39,5 @@ export type WebviewToHost =
   | { type: 'jump'; page: number; x: number; y: number }
   | { type: 'command'; command: string; args?: unknown[] }
   | { type: 'setFollow'; value: boolean }
-  | { type: 'error'; message: string };
+  | { type: 'error'; message: string }
+  | { type: 'log'; message: string };

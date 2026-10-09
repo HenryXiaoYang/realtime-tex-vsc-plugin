@@ -270,21 +270,34 @@ async function renderPage(n: number): Promise<void> {
   const reason = pu.exact ? inexactReason(pu.dl, fonts, images, lines) : 'contains material the live renderer cannot draw (e.g. TikZ)';
   const usePdf = reason !== undefined && pdfDoc !== undefined && n <= pdfPages;
   const doc = pdfDoc;
-  if (usePdf && doc) {
-    try {
-      await renderPdfPage(doc, n, ctx, w, h);
-    } catch {
-      /* fall through to the display list */
-    }
-    if (renderToken.get(n) !== token) return;
-    new Painter(ctx, base, fonts, images).clearLines(
-      pu.dl.lines.filter((_, i) => hidden.has(i)).map((line) => ({ line, dx: 0, dy: 0 })),
-      '#fff',
-    );
-  } else {
+  const drawDisplayList = () => {
     const p = new Painter(ctx, base, fonts, images);
     p.draw(pu.dl, pu.dl.other ?? []);
     for (const line of lines) p.draw(pu.dl, line.items);
+  };
+  let pdfFailed = false;
+  if (usePdf && doc) {
+    try {
+      await renderPdfPage(doc, n, ctx, w, h);
+    } catch (e) {
+      // a PDF problem shows the page's text (approximately) rather than a blank page
+      pdfFailed = true;
+      post({ type: 'log', message: `pdf page ${n}: ${String(e)}` });
+    }
+    if (renderToken.get(n) !== token) return;
+    if (pdfFailed) {
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.fillStyle = '#fff';
+      ctx.fillRect(0, 0, w, h);
+      drawDisplayList();
+    } else {
+      new Painter(ctx, base, fonts, images).clearLines(
+        pu.dl.lines.filter((_, i) => hidden.has(i)).map((line) => ({ line, dx: 0, dy: 0 })),
+        '#fff',
+      );
+    }
+  } else {
+    drawDisplayList();
   }
   for (const { overlay, rows } of model.overlaysOn(n)) {
     const p = new Painter(ctx, base, fonts, images);
@@ -300,7 +313,7 @@ async function renderPage(n: number): Promise<void> {
   canvas.style.height = el.style.height;
   el.replaceChild(canvas, old);
   const badge = el.querySelector<HTMLElement>('.badge')!;
-  if (usePdf) {
+  if (usePdf && !pdfFailed) {
     badge.hidden = false;
     badge.textContent = 'from PDF';
     badge.title = `This page is shown from the last full compile because it ${reason}. Edits on it appear after the next full compile (a second or two).`;
@@ -579,7 +592,7 @@ window.addEventListener('message', (ev: MessageEvent<HostToWebview>) => {
             void old?.destroy();
             markDirty(model.pages.keys());
           },
-          () => undefined,
+          (e) => post({ type: 'log', message: `pdf: cannot open the full-compile PDF: ${String(e)}` }),
         );
       }
       layoutPages();
