@@ -121,3 +121,11 @@ export function engineArgs(scope?: vscode.Uri): string[] {
   if (!c.get<boolean>('engine.pictureCache', true)) args.push('--no-picture-cache');
   return args;
 }
+
+/** The rtex debug directory when realtimeTex.debug.enabled is on (rtex reads it from
+ * RTEX_DEBUG_DIR; versions without debug support ignore the variable). */
+export function debugDir(ctx: vscode.ExtensionContext): string | undefined {
+  if (!cfg().get<boolean>('debug.enabled', false)) return undefined;
+  const configured = expandHome(cfg().get<string>('debug.directory', '').trim());
+  return configured || path.join(ctx.globalStorageUri.fsPath, 'debug');
+}

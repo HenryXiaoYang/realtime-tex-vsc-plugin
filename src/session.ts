@@ -5,7 +5,7 @@ import { existsSync, promises as fs } from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import { PreviewModel } from '../webview/model';
-import { buildDirFor, engineArgs, exportPathFor, processEnv, resolveServer, ServerLocation } from './config';
+import { buildDirFor, debugDir, engineArgs, exportPathFor, processEnv, resolveServer, ServerLocation } from './config';
 import { ShadowText } from './edits';
 import type { Action, ScreenKind } from './messages';
 import type {
@@ -106,6 +106,17 @@ export class Session implements vscode.Disposable {
     return path.join(this.buildDir, 'bg', path.basename(this.mainRel, path.extname(this.mainRel)) + '.pdf');
   }
 
+  /** rtex wrote a debug bundle for an engine failure (watchdog, state mismatch, crash). */
+  private announceDebugBundle(dir: string, reason: string): void {
+    const what = firstLine(reason.replace(/\s*\(debug bundle: .+\)\s*$/, ''));
+    void vscode.window
+      .showWarningMessage(`The live engine was restarted (${what}). A debug bundle was saved.`, 'Reveal Bundle', 'Copy Path')
+      .then((pick) => {
+        if (pick === 'Reveal Bundle') void vscode.commands.executeCommand('revealFileInOS', vscode.Uri.file(dir));
+        if (pick === 'Copy Path') void vscode.env.clipboard.writeText(dir);
+      });
+  }
+
   /** The log of the background compile (LuaLaTeX's own .log). */
   get latexLogPath(): string {
     return path.join(this.buildDir, 'bg', path.basename(this.mainRel, path.extname(this.mainRel)) + '.log');
@@ -149,6 +160,14 @@ export class Session implements vscode.Disposable {
     const env = processEnv(this.ctx, this.server);
     this.log.appendLine(`[start] ${this.server.path} serve --project ${this.projectRoot} --main ${this.mainRel} --build ${this.buildDir}${engineArgs(vscode.Uri.file(this.mainFile)).map((a) => ' ' + a).join('')}`);
     if (env.RTEX_TEXLIVE_BIN) this.log.appendLine(`[start] TeX Live: ${env.RTEX_TEXLIVE_BIN}`);
+    const dbg = debugDir(this.ctx);
+    if (dbg) {
+      await fs.mkdir(dbg, { recursive: true }).catch(() => undefined);
+      env.RTEX_DEBUG_DIR = dbg;
+      this.log.appendLine(`[start] debug: engine failure bundles and requests.log go to ${dbg}`);
+    } else {
+      delete env.RTEX_DEBUG_DIR;
+    }
     execFile('lualatex', ['--version'], { env, timeout: 10000 }, (err, stdout) => {
       this.log.appendLine(`[start] ${err ? `lualatex --version failed: ${err.message}` : String(stdout).split('\n')[0]}`);
     });
@@ -393,6 +412,8 @@ export class Session implements vscode.Disposable {
     switch (ev.event) {
       case 'EngineState': {
         this.log.appendLine(`[engine] ${ev.state} (generation ${ev.engine_generation})${ev.reason ? `: ${ev.reason}` : ''}`);
+        const bundle = /\(debug bundle: (.+)\)\s*$/.exec(ev.reason ?? '')?.[1];
+        if (bundle) this.announceDebugBundle(bundle, ev.reason ?? '');
         if (ev.engine_generation !== this.generation && this.generation >= 0) {
           this.model.dropOverlays();
           this.outputEmitter.fire({ kind: 'dropOverlays' });

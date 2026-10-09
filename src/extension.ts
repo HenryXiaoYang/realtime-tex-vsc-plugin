@@ -1,7 +1,7 @@
 import { promises as fs } from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
-import { cfg, isTexDocument, processEnv, resolveServer } from './config';
+import { cfg, debugDir, isTexDocument, processEnv, resolveServer } from './config';
 import { PreviewPanel, VIEW_TYPE } from './preview/panel';
 import { ResourceLoader } from './resources';
 import { findMainFile, isMainFile } from './root';
@@ -46,6 +46,7 @@ export function activate(context: vscode.ExtensionContext): Api {
   });
   reg('realtimeTex.showLog', () => log.show(true));
   reg('realtimeTex.openLatexLog', () => withSession((s) => s.openLatexLog(), true));
+  reg('realtimeTex.openDebugFolder', () => openDebugFolder());
   reg('realtimeTex.checkSetup', () => checkSetup(ctx));
   reg('realtimeTex.buildFromSource', () => buildFromSource(ctx, () => void (session && session.status.phase === 'failed' ? session.restart() : undefined)));
   // a rebuilt engine takes effect when the running (or failed) session restarts; a stopped one stays stopped
@@ -62,7 +63,7 @@ export function activate(context: vscode.ExtensionContext): Api {
     vscode.workspace.onDidChangeTextDocument((e) => session?.onDidChangeDocument(e)),
     vscode.workspace.onDidOpenTextDocument((d) => session?.onDidOpenDocument(d)),
     vscode.workspace.onDidChangeConfiguration((e) => {
-      const engineSettings = ['realtimeTex.engine', 'realtimeTex.serverPath', 'realtimeTex.texliveBin', 'realtimeTex.texDir', 'realtimeTex.buildDir'];
+      const engineSettings = ['realtimeTex.engine', 'realtimeTex.debug', 'realtimeTex.serverPath', 'realtimeTex.texliveBin', 'realtimeTex.texDir', 'realtimeTex.buildDir'];
       if (!session?.running || !engineSettings.some((k) => e.affectsConfiguration(k))) return;
       vscode.window.setStatusBarMessage('$(sync~spin) Restarting the engine with the new settings…', 4000);
       void session.restart().then(updateUi);
@@ -295,6 +296,23 @@ async function syncToPreview(force: boolean): Promise<void> {
   panel.reveal(true);
   const ok = await session.revealInPreview(ed.document, ed.selection.active, force);
   if (!ok) vscode.window.setStatusBarMessage('$(info) This part of the source has no position in the preview yet.', 3000);
+}
+
+async function openDebugFolder(): Promise<void> {
+  const dir = debugDir(ctx);
+  if (!dir) {
+    const pick = await vscode.window.showInformationMessage(
+      'Debugging is off. Turn it on to have rtex save a bundle (source, context, trace, TeX log) whenever the live engine hangs or crashes.',
+      'Turn On Debugging',
+    );
+    if (pick) {
+      await cfg().update('debug.enabled', true, vscode.ConfigurationTarget.Global);
+      void vscode.window.showInformationMessage(`Debugging is on. Bundles go to ${debugDir(ctx)}.`);
+    }
+    return;
+  }
+  await fs.mkdir(dir, { recursive: true });
+  void vscode.commands.executeCommand('revealFileInOS', vscode.Uri.file(dir));
 }
 
 async function welcome(): Promise<void> {

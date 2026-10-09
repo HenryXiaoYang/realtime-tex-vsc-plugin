@@ -86,6 +86,12 @@
         "icon": "$(file-text)"
       },
       {
+        "command": "realtimeTex.openDebugFolder",
+        "title": "Open Debug Folder",
+        "category": "Realtime TeX",
+        "icon": "$(debug)"
+      },
+      {
         "command": "realtimeTex.checkSetup",
         "title": "Check Setup",
         "category": "Realtime TeX",
@@ -318,6 +324,18 @@
           "type": "boolean",
           "default": true,
           "markdownDescription": "Stop the engine when the preview is closed (frees memory). Turn off to keep diagnostics updating without a preview."
+        },
+        "realtimeTex.debug.enabled": {
+          "type": "boolean",
+          "default": false,
+          "scope": "machine",
+          "markdownDescription": "Have rtex save a debug bundle whenever the live engine hangs, crashes or loses its state: the source it was typesetting, the replayed context, a per-stage trace with font loads, and the TeX log (with `\\tracingmacros`). Every live compile is also listed in `requests.log`. Changing it restarts the engine. Needs realtime-tex `be0e074` or newer.\n\n[Open debug folder](command:realtimeTex.openDebugFolder)"
+        },
+        "realtimeTex.debug.directory": {
+          "type": "string",
+          "default": "",
+          "scope": "machine",
+          "markdownDescription": "Where debug bundles go. Leave empty to use the extension's storage folder (open it with **Realtime TeX: Open Debug Folder**)."
         }
       }
     },

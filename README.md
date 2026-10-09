@@ -84,6 +84,8 @@ live on top.
 | `realtimeTex.engine.eligibility` | `probe` | How rtex picks the parts that update live: `probe` (compare a live result with the last full compile) or `allowlist` (only known-safe commands). |
 | `realtimeTex.engine.fastBudgetMs` | `5` | Time budget for re-typesetting one part live; a part that takes longer three times in a row waits for the full compile. |
 | `realtimeTex.engine.pictureCache` | `true` | Reuse unchanged TikZ pictures from the previous full compile. |
+| `realtimeTex.debug.enabled` | `false` | rtex saves a debug bundle (source, context, trace, TeX log) whenever the live engine hangs or crashes, and lists every live compile in `requests.log`. **Open Debug Folder** shows them. |
+| `realtimeTex.debug.directory` | *(storage)* | Where debug bundles go. |
 | `realtimeTex.mainFile` | *(auto)* | Main file, relative to the workspace folder. |
 | `realtimeTex.buildDir` | *(storage)* | Where rtex keeps build files. Empty keeps them out of your project. |
 | `realtimeTex.exportPath` | `${mainDir}/${mainName}.pdf` | Where **Export PDF** writes. |
@@ -104,6 +106,7 @@ All commands are under **Realtime TeX:** in the command palette:
 - **Restart Engine**
 - **Stop Engine**
 - **Show Log**
+- **Open Debug Folder**
 - **Check Setup**
 - **Install rtex (Build from Source)**
 - **Update rtex Engine**
