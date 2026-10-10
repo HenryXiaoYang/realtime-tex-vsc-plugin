@@ -1,0 +1,101 @@
+name: Release
+
+# Builds the .vsix for a version tag and attaches it to that tag's GitHub release.
+#   git tag v0.0.1 && git push origin v0.0.1   creates the release (notes from CHANGELOG.md)
+#   publishing a release in the GitHub UI      attaches the .vsix to it
+#   running the workflow by hand with a tag    (re)attaches the .vsix to an existing tag
+# The tag must match the version in package.json (v0.0.1 for "version": "0.0.1").
+on:
+  push:
+    tags: ['v*']
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Tag to build and attach the .vsix to (e.g. v0.0.1)
+        required: true
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.event.inputs.tag || github.event.release.tag_name || github.ref_name }}
+
+jobs:
+  vsix:
+    runs-on: ubuntu-latest
+    env:
+      TAG: ${{ github.event.inputs.tag || github.event.release.tag_name || github.ref_name }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: refs/tags/${{ env.TAG }}
+
+      - name: Check the tag against package.json
+        run: |
+          version="$(node -p "require('./package.json').version")"
+          if [ "$TAG" != "v$version" ]; then
+            echo "::error::Tag $TAG does not match package.json version $version (expected v$version)."
+            exit 1
+          fi
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run lint
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Package .vsix
+        run: |
+          npm run package
+          vsix="realtime-tex-$VERSION.vsix"
+          test -f "$vsix"
+          sha256sum "$vsix" > "$vsix.sha256"
+          echo "VSIX=$vsix" >> "$GITHUB_ENV"
+
+      - name: Release notes from CHANGELOG.md
+        # the "## <version>" section, up to the next "## " heading
+        run: |
+          awk -v v="$VERSION" '
+            $0 ~ "^## " { if (on) exit; on = ($2 == v) ; next }
+            on { print }
+          ' CHANGELOG.md > notes.md
+          if [ ! -s notes.md ]; then echo "Realtime TeX Live Preview $TAG" > notes.md; fi
+          {
+            echo
+            echo "### Install"
+            echo
+            echo "Download \`$VSIX\` below, then in VS Code run **Extensions: Install from VSIX…** and pick it, or:"
+            echo
+            echo '```'
+            echo "code --install-extension $VSIX"
+            echo '```'
+          } >> notes.md
+          cat notes.md
+
+      - name: Create the release or attach to it
+        run: |
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            gh release upload "$TAG" "$VSIX" "$VSIX.sha256" --clobber
+          else
+            gh release create "$TAG" "$VSIX" "$VSIX.sha256" --title "$TAG" --notes-file notes.md --verify-tag
+          fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: realtime-tex-${{ env.VERSION }}-vsix
+          path: |
+            ${{ env.VSIX }}
+            ${{ env.VSIX }}.sha256
+          if-no-files-found: error

@@ -144,6 +144,20 @@ xvfb-run -a npm run test:e2e
 On macOS and Windows, run `npm run test:e2e` without `xvfb-run`. The **E2E** workflow runs the suite on
 Linux, macOS and Windows against the latest realtime-tex.
 
+### Releasing
+
+Set `version` in `package.json` and add a `## <version>` section to `CHANGELOG.md`, then push a
+matching tag:
+
+```bash
+git tag v0.0.1 && git push origin v0.0.1
+```
+
+The **Release** workflow builds the `.vsix`, checks that the tag matches `package.json`, and
+creates the GitHub release with the changelog section as notes and the `.vsix` (plus its
+SHA-256) attached. Publishing a release in the GitHub UI, or running the workflow by hand with a
+tag, attaches the `.vsix` to an existing release.
+
 ### Layout
 
 | Path | |
