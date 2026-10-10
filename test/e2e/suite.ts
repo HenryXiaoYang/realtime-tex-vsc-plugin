@@ -69,6 +69,9 @@ async function steps(): Promise<void> {
   step('main file found through \\input');
   await waitFor('the first layout', () => s.status.phase === 'live' && s.model.hasLayout, 120000);
   step(`first layout: ${s.model.pagesTotal} page(s)`);
+  // type once the layout has settled, as a person would (an edit made while the layout is
+  // still catching up goes to the full compile)
+  await waitFor('the layout to settle', () => s.status.convergence?.state === 'Converged' && !s.status.pending, 120000);
   await sleep(1500);
   await vscode.commands.executeCommand('notifications.clearAll');
   await screenshot('1-preview.png');

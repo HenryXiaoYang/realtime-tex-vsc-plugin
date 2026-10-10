@@ -59,6 +59,8 @@ export class Session implements vscode.Disposable {
   private proc: RtexProcess | undefined;
   private server: ServerLocation | undefined;
   private shadows = new Map<string, ShadowText>();
+  /** Text of each closed .tex file as last sent from disk (watcher events). */
+  private diskTexts = new Map<string, string>();
   private spansCache = new Map<string, Promise<Span[]>>();
   private generation = -1;
   private bgDiagnosticsThisPass = false;
@@ -207,6 +209,7 @@ export class Session implements vscode.Disposable {
       // the main file is loaded from disk by rtex; other files only when they are edited
       if (doc.isDirty || rel !== this.mainRel) proc.send({ cmd: 'set_document', path: rel, text: doc.getText() }, (r) => this.onEditReply(r));
     }
+    this.diskTexts.clear();
     this.watchFiles();
   }
 
@@ -392,7 +395,12 @@ export class Session implements vscode.Disposable {
       if (/\.tex$/i.test(file)) {
         if (open) return; // the editor's buffer is authoritative
         try {
-          const text = await fs.readFile(file, 'utf8');
+          const [text, st] = await Promise.all([fs.readFile(file, 'utf8'), fs.stat(file)]);
+          // rtex read the file when it started: an event for an older write (macOS reports
+          // recent writes when a watcher starts) or one that left the text as it was changes
+          // nothing, and a set_document of the main file would restart the live engine
+          if (st.mtimeMs <= this.startedAt || this.diskTexts.get(rel) === text) return;
+          this.diskTexts.set(rel, text);
           this.proc?.send({ cmd: 'set_document', path: rel, text }, (r) => this.onEditReply(r));
         } catch {
           /* deleted */
