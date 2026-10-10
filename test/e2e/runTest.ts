@@ -2,7 +2,7 @@
 // Needs RTEX_E2E_SERVER (the rtex binary) and RTEX_E2E_TEXLIVE_BIN (folder with lualatex);
 // on Linux run it under xvfb-run.
 import { runTests } from '@vscode/test-electron';
-import { cpSync, mkdirSync, mkdtempSync, writeFileSync } from 'fs';
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 
@@ -26,11 +26,27 @@ async function main(): Promise<void> {
       'window.zoomLevel': 0,
     }),
   );
-  await runTests({
-    extensionDevelopmentPath: root,
-    extensionTestsPath: path.join(root, 'out', 'e2e', 'suite.js'),
-    launchArgs: [workspace, '--user-data-dir', userData, '--disable-extensions', '--disable-gpu'],
-    extensionTestsEnv: { RTEX_E2E_OUT: process.env.RTEX_E2E_OUT ?? path.join(work, 'shots') },
+  try {
+    await runTests({
+      extensionDevelopmentPath: root,
+      extensionTestsPath: path.join(root, 'out', 'e2e', 'suite.js'),
+      launchArgs: [workspace, '--user-data-dir', userData, '--disable-extensions', '--disable-gpu'],
+      extensionTestsEnv: { RTEX_E2E_OUT: process.env.RTEX_E2E_OUT ?? path.join(work, 'shots') },
+    });
+  } catch (e) {
+    // the extension's output channel (what rtex said) is the first thing to read on a failure
+    for (const log of findFiles(path.join(userData, 'logs'), /Realtime TeX\.log$/)) {
+      console.error(`----- ${log}\n${readFileSync(log, 'utf8').split('\n').slice(-150).join('\n')}`);
+    }
+    throw e;
+  }
+}
+
+function findFiles(dir: string, re: RegExp): string[] {
+  if (!existsSync(dir)) return [];
+  return readdirSync(dir, { withFileTypes: true }).flatMap((d) => {
+    const p = path.join(dir, d.name);
+    return d.isDirectory() ? findFiles(p, re) : re.test(d.name) ? [p] : [];
   });
 }
 
