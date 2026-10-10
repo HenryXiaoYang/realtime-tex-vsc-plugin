@@ -158,9 +158,10 @@ export class Session implements vscode.Disposable {
       this.setScreen({
         screen: 'notInstalled',
         message:
-          'Realtime TeX uses the rtex engine from the realtime-tex project to re-typeset only the paragraph you edit. Install it once (it is built from source, a few minutes), or point the extension at an rtex binary you already have.',
+          'Realtime TeX uses the rtex engine from the realtime-tex project to re-typeset only the paragraph you edit. Install it once (a download of a few MB), or point the extension at an rtex binary you already have.',
         actions: [
-          { label: 'Install rtex', command: 'realtimeTex.buildFromSource', primary: true },
+          { label: 'Install rtex', command: 'realtimeTex.installRtex', primary: true },
+          { label: 'Build from Source', command: 'realtimeTex.buildFromSource' },
           { label: 'Locate rtex Binary…', command: 'realtimeTex.selectServerPath' },
           ACTIONS.checkSetup,
         ],
@@ -262,7 +263,7 @@ export class Session implements vscode.Disposable {
       this.setScreen({
         screen: 'notInstalled',
         message: `The rtex binary could not be started (${info.error.code}): ${this.server?.path}`,
-        actions: [{ label: 'Install rtex', command: 'realtimeTex.buildFromSource', primary: true }, { label: 'Locate rtex Binary…', command: 'realtimeTex.selectServerPath' }, ACTIONS.checkSetup],
+        actions: [{ label: 'Reinstall rtex', command: 'realtimeTex.installRtex', primary: true }, { label: 'Locate rtex Binary…', command: 'realtimeTex.selectServerPath' }, ACTIONS.checkSetup],
       });
       return;
     }

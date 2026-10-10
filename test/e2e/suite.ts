@@ -5,6 +5,8 @@ import * as os from 'os';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import type { Api } from '../../src/extension';
+import { activeManaged, installedRelease, releaseBinary } from '../../src/config';
+import { installRelease } from '../../src/prebuilt';
 import { runTask, sq } from '../../src/setup';
 
 const shots = process.env.RTEX_E2E_OUT ?? '';
@@ -180,5 +182,34 @@ async function steps(): Promise<void> {
   const got = existsSync(out) ? readFileSync(out, 'utf8').trim() : '(no file)';
   if (got !== "it's ok nested") throw new Error(`the task wrote ${got}`);
   step(`setup task ran in ${process.platform === 'win32' ? 'Git Bash' : 'bash'}`);
+
+  // 11. Install rtex: download the latest release for this machine (what the command does,
+  // into a scratch storage folder), then run the live preview on the downloaded engine
+  const state = new Map<string, unknown>();
+  const fakeCtx = {
+    globalStorageUri: vscode.Uri.file(mkdtempSync(path.join(os.tmpdir(), 'rtex storage '))),
+    globalState: { get: (k: string) => state.get(k), update: async (k: string, v: unknown) => void state.set(k, v) },
+  } as unknown as vscode.ExtensionContext;
+  const progress: string[] = [];
+  const res = await installRelease(fakeCtx, { report: (p) => void (p.message && progress.push(p.message)) });
+  if (!res.ok) throw new Error(`installing the release failed: ${res.error}`);
+  if (installedRelease(fakeCtx) !== res.tag || activeManaged(fakeCtx) !== 'release') throw new Error('the release is not the active rtex');
+  step(`downloaded and verified ${res.version} (${res.tag})`);
+  const cfg = vscode.workspace.getConfiguration('realtimeTex');
+  const builtServer = cfg.get<string>('serverPath');
+  await cfg.update('serverPath', releaseBinary(fakeCtx, res.tag), vscode.ConfigurationTarget.Global);
+  try {
+    await vscode.window.showTextDocument(main, vscode.ViewColumn.One);
+    await vscode.commands.executeCommand('realtimeTex.openPreview');
+    await waitFor('a session on the downloaded rtex', () => api.session()?.mainFile === main.fileName && api.session()!.running, 20000);
+    const sr = api.session()!;
+    await waitFor('its first layout', () => sr.status.phase === 'live' && sr.model.hasLayout, 120000);
+    await waitFor('the layout to settle', () => sr.status.convergence?.state === 'Converged' && !sr.status.pending, 120000);
+    await insertAfter(main, 'A second paragraph refers', ' quickly');
+    await waitFor('a fast update from the downloaded rtex', () => sr.status.lastFastMs !== undefined, 30000);
+    step(`downloaded rtex typesets live (${sr.status.lastFastMs!.toFixed(2)} ms)`);
+  } finally {
+    await cfg.update('serverPath', builtServer, vscode.ConfigurationTarget.Global);
+  }
   console.log(`[e2e] all ${steps.length} steps passed`);
 }

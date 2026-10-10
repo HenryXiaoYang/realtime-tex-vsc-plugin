@@ -17,12 +17,12 @@ references and bibliographies follow from a full compile in the background.
 
 On first use, the preview walks you through anything that is missing:
 
-- **rtex is not installed.** Click **Install rtex**. It is built from source with Rust's `cargo`, takes a few minutes, and only happens once. On Windows it also needs [Git for Windows](https://git-scm.com/download/win) and the Visual Studio C++ Build Tools that [rustup](https://rustup.rs) asks for.
+- **rtex is not installed.** Click **Install rtex**. It downloads the prebuilt engine of the latest [realtime-tex release](https://github.com/HenryXiaoYang/realtime-tex/releases) for your platform (a few MB) and checks its SHA-256. Prefer to build it yourself? **Build from Source** clones realtime-tex `main` and builds it with Rust's `cargo` (a few minutes; on Windows it also needs [Git for Windows](https://git-scm.com/download/win) and the Visual Studio C++ Build Tools that [rustup](https://rustup.rs) asks for). The `realtimeTex.installFrom` setting picks which one **Install rtex** does.
 - **LuaLaTeX was not found.** Choose your TeX Live `bin` folder, or let the extension install a minimal TeX Live 2026.
 
 **Realtime TeX: Check Setup** in the command palette checks everything and offers a fix for each problem.
 
-The extension keeps the rtex it installed up to date. It checks once a day and offers **Update Now**. **Realtime TeX: Update rtex Engine** updates on demand: it pulls the latest realtime-tex, rebuilds it and restarts the engine. The `realtimeTex.updateCheck` setting controls this.
+The extension keeps the rtex it installed up to date, the way it was installed: a downloaded rtex updates to the latest release, one built from source pulls realtime-tex `main` and rebuilds it. It checks once a day and offers **Update Now**; **Realtime TeX: Update rtex Engine** updates on demand and restarts the engine. The `realtimeTex.updateCheck` setting controls this.
 
 ## Using the preview
 
@@ -82,10 +82,11 @@ live on top.
 |---|---|---|
 | `realtimeTex.serverPath` | *(auto)* | rtex binary. Empty means the one installed by **Install rtex**, then `rtex` on `PATH`. |
 | `realtimeTex.texliveBin` | *(PATH)* | Folder containing `lualatex`. |
-| `realtimeTex.texDir` | *(auto)* | rtex's `tex/` folder. Only needed if you moved the binary away from its checkout. |
-| `realtimeTex.updateCheck` | `notify` | Once a day, check realtime-tex `main` for a newer engine: `notify` offers the update, `auto` updates and rebuilds by itself, `off` never checks. The setting has an **Update rtex now** link. |
+| `realtimeTex.texDir` | *(auto)* | rtex's `tex/` support files. Only needed if you moved the binary away from them. |
+| `realtimeTex.installFrom` | `release` | What **Install rtex** does: `release` downloads the prebuilt engine, `source` builds realtime-tex `main` with `cargo`. |
+| `realtimeTex.updateCheck` | `notify` | Once a day, check for a newer engine (a new release, or new commits on `main` for a source build): `notify` offers the update, `auto` updates by itself, `off` never checks. The setting has an **Update rtex now** link. |
 | `realtimeTex.engine.eligibility` | `probe` | How rtex picks the parts that update live: `probe` (compare a live result with the last full compile) or `allowlist` (only known-safe commands). |
-| `realtimeTex.engine.fastBudgetMs` | `5` | Time budget for re-typesetting one part live; a part that takes longer three times in a row waits for the full compile. |
+| `realtimeTex.engine.fastBudgetMs` | `50` | Time budget for re-typesetting one part live; a part that takes longer three times in a row waits for the full compile. |
 | `realtimeTex.engine.pictureCache` | `true` | Reuse unchanged TikZ pictures from the previous full compile. |
 | `realtimeTex.debug.enabled` | `false` | rtex saves a debug bundle (source, context, trace, TeX log) whenever the live engine hangs or crashes, and lists every live compile in `requests.log`. **Open Debug Folder** shows them. |
 | `realtimeTex.debug.directory` | *(storage)* | Where debug bundles go. |
@@ -112,6 +113,7 @@ All commands are under **Realtime TeX:** in the command palette:
 - **Show Log**
 - **Open Debug Folder**
 - **Check Setup**
+- **Install rtex**
 - **Install rtex (Build from Source)**
 - **Update rtex Engine**
 - **Locate rtex Binary…**

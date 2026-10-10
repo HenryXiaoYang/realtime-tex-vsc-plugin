@@ -36,6 +36,47 @@ export function managedBinary(ctx: vscode.ExtensionContext): string {
   return path.join(managedCheckout(ctx), 'target', 'release', exe('rtex'));
 }
 
+/** Where "Install rtex" unpacks release archives: one folder per release tag, and a `current`
+ * file naming the one in use. */
+export function releasesDir(ctx: vscode.ExtensionContext): string {
+  return path.join(ctx.globalStorageUri.fsPath, 'rtex-release');
+}
+
+/** The tag of the installed prebuilt rtex, if any. */
+export function installedRelease(ctx: vscode.ExtensionContext): string | undefined {
+  try {
+    const tag = readFileSync(path.join(releasesDir(ctx), 'current'), 'utf8').trim();
+    return tag && existsSync(releaseBinary(ctx, tag)) ? tag : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+export function releaseBinary(ctx: vscode.ExtensionContext, tag: string): string {
+  return path.join(releasesDir(ctx), tag, 'bin', exe('rtex'));
+}
+
+export type ManagedKind = 'release' | 'source';
+
+const ACTIVE = 'realtimeTex.activeManaged';
+
+/** Which managed rtex is in use: the one installed last, else whichever exists. */
+export function activeManaged(ctx: vscode.ExtensionContext): ManagedKind | undefined {
+  const has = { release: installedRelease(ctx) !== undefined, source: existsSync(managedBinary(ctx)) };
+  const chosen = ctx.globalState.get<ManagedKind>(ACTIVE);
+  if (chosen && has[chosen]) return chosen;
+  return has.release ? 'release' : has.source ? 'source' : undefined;
+}
+
+export function setActiveManaged(ctx: vscode.ExtensionContext, kind: ManagedKind): Thenable<void> {
+  return ctx.globalState.update(ACTIVE, kind);
+}
+
+/** Where "Install TeX Live" runs realtime-tex's installer (and where it installs). */
+export function texliveInstallerDir(ctx: vscode.ExtensionContext): string {
+  return path.join(ctx.globalStorageUri.fsPath, 'texlive');
+}
+
 function onPath(name: string): string | undefined {
   for (const dir of (process.env.PATH ?? '').split(path.delimiter)) {
     if (!dir) continue;
@@ -56,9 +97,12 @@ function pathKey(env: NodeJS.ProcessEnv): string {
 export interface ServerLocation {
   path: string;
   source: 'setting' | 'managed' | 'PATH';
+  /** For a managed rtex: downloaded from a release or built from source. */
+  kind?: ManagedKind;
 }
 
-/** The rtex binary: the setting, else the managed build, else `rtex` on PATH. */
+/** The rtex binary: the setting, else the managed copy (downloaded or built), else `rtex` on
+ * PATH. */
 export function resolveServer(ctx: vscode.ExtensionContext): ServerLocation | undefined {
   const configured = cfg().get<string>('serverPath', '').trim();
   if (configured) {
@@ -67,8 +111,9 @@ export function resolveServer(ctx: vscode.ExtensionContext): ServerLocation | un
     const found = onPath(p);
     return found ? { path: found, source: 'setting' } : undefined;
   }
-  const managed = managedBinary(ctx);
-  if (existsSync(managed)) return { path: managed, source: 'managed' };
+  const kind = activeManaged(ctx);
+  if (kind === 'release') return { path: releaseBinary(ctx, installedRelease(ctx)!), source: 'managed', kind };
+  if (kind === 'source') return { path: managedBinary(ctx), source: 'managed', kind };
   const found = onPath('rtex');
   return found ? { path: found, source: 'PATH' } : undefined;
 }
@@ -87,9 +132,10 @@ function texliveEnvFile(file: string): Record<string, string> {
 /** Environment for rtex and the TeX tools it runs. */
 export function processEnv(ctx: vscode.ExtensionContext, server?: ServerLocation): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = { ...process.env };
-  const checkout = managedCheckout(ctx);
-  // a TeX Live installed next to the managed checkout (scripts/install-texlive.sh)
-  const managedTl = texliveEnvFile(path.join(checkout, 'build', 'texlive.env'));
+  // a TeX Live installed by "Install TeX Live" (realtime-tex's scripts/install-texlive.sh), in
+  // its own folder or, from earlier versions, next to the managed checkout
+  const envFile = [texliveInstallerDir(ctx), managedCheckout(ctx)].map((d) => path.join(d, 'build', 'texlive.env')).find((f) => existsSync(f));
+  const managedTl = envFile ? texliveEnvFile(envFile) : {};
   let bin = expandHome(cfg().get<string>('texliveBin', '').trim());
   if (!bin && managedTl.RTEX_TEXLIVE_BIN) {
     bin = managedTl.RTEX_TEXLIVE_BIN;
@@ -142,8 +188,8 @@ export function engineArgs(scope?: vscode.Uri): string[] {
   const args: string[] = [];
   const eligibility = c.get<string>('engine.eligibility', 'probe');
   if (eligibility && eligibility !== 'probe') args.push('--eligibility', eligibility);
-  const budget = Math.round(c.get<number>('engine.fastBudgetMs', 5));
-  if (budget > 0 && budget !== 5) args.push('--fast-budget-ms', String(budget));
+  const budget = Math.round(c.get<number>('engine.fastBudgetMs', 50));
+  if (budget > 0 && budget !== 50) args.push('--fast-budget-ms', String(budget));
   if (!c.get<boolean>('engine.pictureCache', true)) args.push('--no-picture-cache');
   return args;
 }

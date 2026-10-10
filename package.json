@@ -98,6 +98,12 @@
         "icon": "$(checklist)"
       },
       {
+        "command": "realtimeTex.installRtex",
+        "title": "Install rtex",
+        "category": "Realtime TeX",
+        "icon": "$(cloud-download)"
+      },
+      {
         "command": "realtimeTex.buildFromSource",
         "title": "Install rtex (Build from Source)",
         "category": "Realtime TeX",
@@ -208,7 +214,7 @@
         "realtimeTex.serverPath": {
           "type": "string",
           "default": "",
-          "markdownDescription": "Path to the `rtex` binary. Leave empty to use the copy installed by **Realtime TeX: Install rtex (Build from Source)**, or `rtex` from your `PATH`.",
+          "markdownDescription": "Path to the `rtex` binary. Leave empty to use the copy installed by **Realtime TeX: Install rtex**, or `rtex` from your `PATH`.",
           "scope": "machine-overridable"
         },
         "realtimeTex.texliveBin": {
@@ -220,8 +226,22 @@
         "realtimeTex.texDir": {
           "type": "string",
           "default": "",
-          "markdownDescription": "The `tex/` folder of the realtime-tex checkout (sets `RTEX_TEXDIR`). Only needed if you moved the rtex binary away from the checkout it was built in.",
+          "markdownDescription": "rtex's `tex/` support files (sets `RTEX_TEXDIR`). Only needed if you moved the rtex binary away from them: a release keeps them in `share/rtex/tex` next to `bin/`, a source build in the checkout's `tex/`.",
           "scope": "machine-overridable"
+        },
+        "realtimeTex.installFrom": {
+          "type": "string",
+          "enum": [
+            "release",
+            "source"
+          ],
+          "enumDescriptions": [
+            "Download the prebuilt rtex of the latest realtime-tex release (a few MB, no Rust needed)",
+            "Clone realtime-tex main and build rtex with cargo (needs Rust; has changes before they are released)"
+          ],
+          "default": "release",
+          "markdownDescription": "What **Install rtex** does. Updates follow the way the rtex in use was installed. Building from source is also available any time as **Realtime TeX: Install rtex (Build from Source)**.\n\n[Install rtex now](command:realtimeTex.installRtex)",
+          "scope": "machine"
         },
         "realtimeTex.updateCheck": {
           "type": "string",
@@ -231,12 +251,12 @@
             "off"
           ],
           "enumDescriptions": [
-            "Once a day, say when a newer realtime-tex is available and offer to update",
-            "Once a day, update and rebuild rtex by itself when a newer realtime-tex is available",
+            "Once a day, say when a newer rtex is available and offer to update",
+            "Once a day, update rtex by itself when a newer one is available",
             "Never check; update with the command only"
           ],
           "default": "notify",
-          "markdownDescription": "Keep the rtex engine installed by the extension up to date with [realtime-tex](https://github.com/HenryXiaoYang/realtime-tex) `main`. Updating pulls the latest source and rebuilds it (needs `git` and `cargo`), then restarts the engine.\n\n[Update rtex now](command:realtimeTex.updateRtex)",
+          "markdownDescription": "Keep the rtex engine installed by the extension up to date. A downloaded rtex updates to the latest [realtime-tex release](https://github.com/HenryXiaoYang/realtime-tex/releases); one built from source pulls realtime-tex `main` and rebuilds it (needs `git` and `cargo`). The engine restarts on the new rtex.\n\n[Update rtex now](command:realtimeTex.updateRtex)",
           "scope": "machine"
         },
         "realtimeTex.engine.eligibility": {
@@ -250,11 +270,11 @@
             "Typeset live only parts made of commands rtex knows to be safe"
           ],
           "default": "probe",
-          "markdownDescription": "How rtex decides which parts of the document can update live. See realtime-tex's [ELIGIBILITY.md](https://github.com/HenryXiaoYang/realtime-tex/blob/main/docs/ELIGIBILITY.md). Changing it restarts the engine."
+          "markdownDescription": "How rtex decides which parts of the document can update live. See realtime-tex's [live editing guide](https://github.com/HenryXiaoYang/realtime-tex/blob/main/docs/live-editing.md). Changing it restarts the engine."
         },
         "realtimeTex.engine.fastBudgetMs": {
           "type": "number",
-          "default": 5,
+          "default": 50,
           "minimum": 1,
           "maximum": 1000,
           "markdownDescription": "Time budget, in milliseconds, for re-typesetting one part live. A part that takes longer three times in a row waits for the full compile until the next layout. Raise it on a slow computer. Changing it restarts the engine."
@@ -364,11 +384,12 @@
           {
             "id": "installRtex",
             "title": "Install the rtex engine",
-            "description": "If the check says rtex is missing, install it with one click. It is built from source with Rust's `cargo` (takes a few minutes, once).\n[Install rtex](command:realtimeTex.buildFromSource)\nAlready have it? [Locate the rtex binary](command:realtimeTex.selectServerPath)",
+            "description": "If the check says rtex is missing, install it with one click: the prebuilt engine of the latest realtime-tex release is downloaded (a few MB).\n[Install rtex](command:realtimeTex.installRtex)\nPrefer to build it yourself? [Build from source](command:realtimeTex.buildFromSource) (needs Rust). Already have it? [Locate the rtex binary](command:realtimeTex.selectServerPath)",
             "media": {
               "markdown": "media/walkthrough/install.md"
             },
             "completionEvents": [
+              "onCommand:realtimeTex.installRtex",
               "onCommand:realtimeTex.buildFromSource",
               "onCommand:realtimeTex.selectServerPath"
             ]
