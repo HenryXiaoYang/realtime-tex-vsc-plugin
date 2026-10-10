@@ -292,6 +292,11 @@
           "default": true,
           "markdownDescription": "Scroll the preview to follow the text cursor."
         },
+        "realtimeTex.editor.liveMarkers": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Mark each part of the source next to the line numbers while the preview runs: a **solid green bar** means the part updates live as you type, a **dotted amber bar** means it waits for the full compile (the preamble, TikZ, …). Hover over a marked part that went to the full compile to see why."
+        },
         "realtimeTex.preview.invertInDarkTheme": {
           "type": "boolean",
           "default": false,

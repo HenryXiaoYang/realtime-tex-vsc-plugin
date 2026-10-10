@@ -78,6 +78,15 @@ async function steps(): Promise<void> {
   step(`fast update in ${s.status.lastFastMs!.toFixed(2)} ms`);
   await sleep(800);
   await screenshot('2-fast-edit.png');
+  // the gutter marks the edited paragraph live and the preamble as waiting for the full compile
+  const marks = await s.liveMarks(main);
+  const at = (needle: string) => {
+    const b = Buffer.byteLength(main.getText().slice(0, main.getText().indexOf(needle)));
+    return marks.find((m) => m.span.range.start <= b && b < m.span.range.end)?.kind;
+  };
+  if (at('This paragraph is typeset') !== 'live') throw new Error(`edited paragraph marked ${at('This paragraph is typeset')}`);
+  if (at('\\documentclass') !== 'full') throw new Error(`preamble marked ${at('\\documentclass')}`);
+  step(`gutter: ${marks.filter((m) => m.kind === 'live').length} live part(s), ${marks.filter((m) => m.kind === 'full').length} on the full compile`);
 
   // 3. cursor → preview and preview → source
   const editor = await vscode.window.showTextDocument(main, vscode.ViewColumn.One);

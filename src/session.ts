@@ -7,6 +7,8 @@ import * as vscode from 'vscode';
 import { PreviewModel } from '../webview/model';
 import { buildDirFor, debugDir, engineArgs, exportPathFor, processEnv, resolveServer, ServerLocation } from './config';
 import { ShadowText } from './edits';
+import { LiveGutter } from './gutter';
+import type { LiveMark } from './liveMarks';
 import type { Action, ScreenKind } from './messages';
 import type {
   Diagnostic as RtexDiagnostic,
@@ -65,8 +67,9 @@ export class Session implements vscode.Disposable {
   private pendingTimer: ReturnType<typeof setTimeout> | undefined;
   private startedAt = 0;
   private autoRestarted = false;
-  private disposables: vscode.Disposable[] = [];
   private disposed = false;
+  /** Gutter markers: which parts of the source update live. */
+  private readonly gutter: LiveGutter;
 
   private statusValue: SessionStatus = { phase: 'idle', pending: false, errorCount: 0, pagesTotal: 0 };
   private screenValue: Screen = { screen: null };
@@ -88,6 +91,12 @@ export class Session implements vscode.Disposable {
     this.mainRel = path.basename(mainFile);
     this.buildDir = buildDirFor(ctx, mainFile);
     this.statusValue.mainName = this.mainRel;
+    this.gutter = new LiveGutter(vscode.Uri.joinPath(ctx.extensionUri, 'media'), {
+      relPath: (doc) => this.relPath(doc),
+      spans: (rel) => this.spans(rel),
+      shadow: (rel) => this.shadows.get(rel),
+      running: () => this.running,
+    });
   }
 
   get status(): SessionStatus {
@@ -180,6 +189,8 @@ export class Session implements vscode.Disposable {
     this.startedAt = Date.now();
     this.generation = -1;
     this.model.clear();
+    this.gutter.state.clear();
+    this.gutter.clear();
     this.outputEmitter.fire({ kind: 'dropOverlays' });
     this.setPhase('starting');
     this.setScreen({
@@ -204,6 +215,7 @@ export class Session implements vscode.Disposable {
     this.proc = undefined;
     if (proc) await proc.stop();
     this.disposeWatchers();
+    this.gutter.clear();
     this.setPhase('stopped');
     this.setScreen({
       screen: 'stopped',
@@ -226,6 +238,7 @@ export class Session implements vscode.Disposable {
     void this.proc?.stop();
     this.proc = undefined;
     this.disposeWatchers();
+    this.gutter.dispose();
     this.diagnostics.clear();
     clearTimeout(this.pendingTimer);
     this.outputEmitter.dispose();
@@ -238,6 +251,7 @@ export class Session implements vscode.Disposable {
     this.proc = undefined;
     this.disposeWatchers();
     if (info.requested || this.disposed) return;
+    this.gutter.clear();
     const tail = info.stderrTail.join('\n');
     this.log.appendLine(`[exit] code ${info.code} signal ${info.signal}${info.error ? ` error ${info.error.message}` : ''}`);
     if (info.error?.code === 'ENOENT' || info.error?.code === 'EACCES') {
@@ -284,6 +298,7 @@ export class Session implements vscode.Disposable {
     const rel = this.relPath(e.document);
     if (!proc || !rel || e.contentChanges.length === 0) return;
     this.spansCache.delete(rel);
+    this.gutter.refresh();
     const shadow = this.shadows.get(rel);
     if (!shadow) {
       this.shadows.set(rel, new ShadowText(e.document.getText()));
@@ -415,6 +430,8 @@ export class Session implements vscode.Disposable {
         const bundle = /\(debug bundle: (.+)\)\s*$/.exec(ev.reason ?? '')?.[1];
         if (bundle) this.announceDebugBundle(bundle, ev.reason ?? '');
         if (ev.engine_generation !== this.generation && this.generation >= 0) {
+          this.gutter.state.restarted();
+          this.gutter.refresh();
           this.model.dropOverlays();
           this.outputEmitter.fire({ kind: 'dropOverlays' });
         }
@@ -462,6 +479,8 @@ export class Session implements vscode.Disposable {
         }
         this.model.applyParagraph(ev.par_id, ev.dl, ev.fragments, ev.versions.source_revision);
         this.outputEmitter.fire({ kind: 'paragraph', ev });
+        this.gutter.state.observed([ev.par_id], true);
+        this.gutter.refresh();
         this.setDiagnostics('live', ev.diagnostics);
         if (ev.pagination_stale || ev.reasons.length) {
           this.statusValue.lastBackgroundReason = ev.reasons.includes('inserts') ? 'footnote text is placed with the page' : 'the paragraph changed its number of lines';
@@ -477,6 +496,11 @@ export class Session implements vscode.Disposable {
         this.setDiagnostics(ev.source, ev.items);
         break;
       case 'BackgroundScheduled':
+        // the edited part (or the engine after typesetting it) went to the full compile
+        if (ev.par_id !== null) {
+          this.gutter.state.observed([ev.par_id], false, ev.reasons);
+          this.gutter.refresh();
+        }
         this.statusValue.lastBackgroundReason = explainReasons(ev.reasons);
         this.setPending(true);
         break;
@@ -508,6 +532,8 @@ export class Session implements vscode.Disposable {
     const settled = ev.convergence.state === 'Converged' || ev.convergence.state === 'PassLimitReached';
     if (settled || (ev.convergence.state === 'Converging' && ev.compile.state !== 'Ok')) this.setPending(false, false);
     this.spansCache.clear();
+    this.gutter.state.layout(ev.eligible_paragraphs, ev.placements.map((p) => p.par_id));
+    this.gutter.refresh(0);
     this.setPhase('live');
     this.setScreen({ screen: null });
     this.outputEmitter.fire({ kind: 'banner', text: null });
@@ -699,6 +725,12 @@ export class Session implements vscode.Disposable {
       return true;
     }
     return false;
+  }
+
+  /** The gutter marks of `doc` (for tests). */
+  async liveMarks(doc: vscode.TextDocument): Promise<LiveMark[]> {
+    const rel = this.relPath(doc);
+    return rel ? this.gutter.state.marks(await this.spans(rel)) : [];
   }
 
   /** Where each unit is shown (for tests and the panel). */
