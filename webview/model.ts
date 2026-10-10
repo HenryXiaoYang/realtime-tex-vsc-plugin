@@ -113,22 +113,35 @@ export class PreviewModel {
     let set = this.hiddenCache.get(page);
     if (set) return set;
     set = new Set<number>();
+    for (const id of this.overlays.keys()) for (const i of this.ownLines(page, id)) set.add(i);
+    this.hiddenCache.set(page, set);
+    return set;
+  }
+
+  /**
+   * Indices of the page's lines that belong to unit `parId` in the last layout: the lines at
+   * the unit's placement rows (baseline and x), plus every other line the capture attributed
+   * to the same capture unit (`line.unit`). The second part catches rows a placement does not
+   * pin down exactly (a picture row, a display), so nothing of the unit stays behind at its old
+   * place while the live result is drawn at the new one.
+   */
+  ownLines(page: number, parId: number): Set<number> {
+    const set = new Set<number>();
     const pu = this.pages.get(page);
-    if (pu) {
-      for (const id of this.overlays.keys()) {
-        for (const f of this.placements.get(id) ?? []) {
-          if (f.page !== page) continue;
-          for (let k = 0; k < f.baselines.length; k++) {
-            pu.dl.lines.forEach((line, idx) => {
-              if (Math.abs(line.y - f.baselines[k]) <= MATCH_TOLERANCE && Math.abs(line.x - (f.xs[k] ?? f.x)) <= MATCH_TOLERANCE) {
-                set!.add(idx);
-              }
-            });
+    if (!pu) return set;
+    const units = new Set<number>();
+    for (const f of this.placements.get(parId) ?? []) {
+      if (f.page !== page) continue;
+      for (let k = 0; k < f.baselines.length; k++) {
+        pu.dl.lines.forEach((line, idx) => {
+          if (Math.abs(line.y - f.baselines[k]) <= MATCH_TOLERANCE && Math.abs(line.x - (f.xs[k] ?? f.x)) <= MATCH_TOLERANCE) {
+            set.add(idx);
+            if (line.unit) units.add(line.unit);
           }
-        }
+        });
       }
     }
-    this.hiddenCache.set(page, set);
+    if (units.size) pu.dl.lines.forEach((line, idx) => line.unit && units.has(line.unit) && set.add(idx));
     return set;
   }
 
@@ -216,28 +229,27 @@ export function cachedPicture(it: Item): (Rect & { index: number }) | undefined 
  * Where the cached pictures of a live unit were on the page (`src`, from the page's display
  * list) and where they are now (`dst`, the unit's item moved by its row's translation). A
  * live compile carries a cached picture only as an item; its pixels come from the page as the
- * last layout drew it, so they are carried over to the new position. Pairs by picture index,
- * else by size; a picture with no counterpart on the page is skipped.
+ * last layout drew it, so they are carried over to the new position. Only pictures on the
+ * unit's own page lines (`own`, from PreviewModel.ownLines) are candidates, paired by picture
+ * index, else by size: a picture of another unit is never taken. A picture with no
+ * counterpart among them (e.g. it moved here from another page) is skipped.
  */
-export function cachedPictureMoves(page: DisplayList, rows: readonly OverlayRow[]): { src: Rect; dst: Rect }[] {
+export function cachedPictureMoves(page: DisplayList, rows: readonly OverlayRow[], own: ReadonlySet<number>): { src: Rect; dst: Rect }[] {
   const onPage: (Rect & { index: number })[] = [];
-  for (const it of page.other ?? []) {
-    const c = cachedPicture(it);
-    if (c) onPage.push(c);
-  }
-  for (const line of page.lines) {
+  page.lines.forEach((line, idx) => {
+    if (!own.has(idx)) return;
     for (const it of line.items) {
       const c = cachedPicture(it);
       if (c) onPage.push(c);
     }
-  }
+  });
   const used = new Set<number>();
   const out: { src: Rect; dst: Rect }[] = [];
   for (const { line, dx, dy } of rows) {
     for (const it of line.items) {
       const c = cachedPicture(it);
       if (!c) continue;
-      const same = (k: number) => !used.has(k) && Math.abs(onPage[k].w - c.w) <= 2 && Math.abs(onPage[k].h - c.h) <= 2;
+      const same = (k: number) => !used.has(k) && Math.abs(onPage[k].w - c.w) <= MATCH_TOLERANCE && Math.abs(onPage[k].h - c.h) <= MATCH_TOLERANCE;
       let k = onPage.findIndex((p, i) => p.index === c.index && same(i));
       if (k < 0) k = onPage.findIndex((_, i) => same(i));
       if (k < 0) continue;

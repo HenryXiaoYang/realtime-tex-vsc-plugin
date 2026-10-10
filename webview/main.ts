@@ -31,6 +31,10 @@ const fonts = new FontStore();
 const images = new ImageStore(rasterizePdfImage);
 let pdfDoc: PdfDoc | undefined;
 let pdfPages = 0;
+/** Serial of the loaded PDF, and per page the serial of the PDF that matches its current
+ * display list (Infinity: no PDF came with the layout that last changed the page). */
+let pdfSerialLoaded = 0;
+const pagePdfSerial = new Map<number, number>();
 
 // ---------------------------------------------------------------------------------------------
 // DOM
@@ -278,10 +282,9 @@ async function renderPage(n: number): Promise<void> {
   let pdfFailed = false;
   const overlays = model.overlaysOn(n);
   // cached TikZ pictures inside live units: their pixels as the page shows them, taken before
-  // anything is cleared and put back where the live rows place them. `src` is where the page
-  // (the last full compile) drew the picture; it is cleared so a picture the edit moved does
-  // not stay behind at its old place while its copy is drawn at the new one (two graphs).
-  let pictureSnaps: { img: ImageData; src: Rect; dst: Rect }[] = [];
+  // anything is cleared and put back where the live rows place them. Only from the PDF of this
+  // page's current layout: an older PDF has other content at the picture's rectangle.
+  let pictureSnaps: { img: ImageData; dst: Rect }[] = [];
   if (usePdf && doc) {
     try {
       await renderPdfPage(doc, n, ctx, w, h);
@@ -291,11 +294,11 @@ async function renderPage(n: number): Promise<void> {
       post({ type: 'log', message: `pdf page ${n}: ${String(e)}` });
     }
     if (renderToken.get(n) !== token) return;
-    if (!pdfFailed) {
-      pictureSnaps = overlays.flatMap(({ rows }) =>
-        cachedPictureMoves(pu.dl, rows).flatMap(({ src, dst }) => {
+    if (!pdfFailed && pdfSerialLoaded >= (pagePdfSerial.get(n) ?? 0)) {
+      pictureSnaps = overlays.flatMap(({ overlay, rows }) =>
+        cachedPictureMoves(pu.dl, rows, model.ownLines(n, overlay.parId)).flatMap(({ src, dst }) => {
           const img = grabRect(ctx, base, src);
-          return img ? [{ img, src, dst }] : [];
+          return img ? [{ img, dst }] : [];
         }),
       );
     }
@@ -313,26 +316,16 @@ async function renderPage(n: number): Promise<void> {
   } else {
     drawDisplayList();
   }
-  // clear each moved picture's old place (where the page drew it) before anything live is
-  // drawn: the picture is stamped at its new place below and the live rows may now run
-  // through its old place (a sentence that wrapped onto more lines), so the clear must not
-  // come after them
-  const moved = pictureSnaps.filter(({ src, dst }) => Math.abs(src.x - dst.x) > 1 || Math.abs(src.y - dst.y) > 1);
-  if (moved.length) {
-    new Painter(ctx, base, fonts, images).clearRects(
-      moved.map(({ src }) => [src.x, src.y, src.x + src.w, src.y + src.h] as [number, number, number, number]),
-      '#fff',
-    );
-  }
-  for (const { overlay, rows } of overlays) {
-    const p = new Painter(ctx, base, fonts, images);
-    // the unit's rows may now reach into following material (until the next layout): clear
-    // the band each row occupies, from the previous row's depth down to its own
-    p.clearRects(rowBands(rows), '#fff');
-    p.draw(overlay.dl, overlay.dl.other ?? []);
-    for (const r of rows) p.draw(overlay.dl, r.line.items, r.dx, r.dy);
-  }
+  // live units: clear the bands their rows occupy now (they may reach into following material
+  // until the next layout), put their cached pictures back, then draw their rows, so a picture
+  // never covers live text and no clear erases a picture already placed
+  const painters = overlays.map(() => new Painter(ctx, base, fonts, images));
+  overlays.forEach(({ rows }, i) => painters[i].clearRects(rowBands(rows), '#fff'));
   for (const { img, dst } of pictureSnaps) putRect(ctx, base, img, dst);
+  overlays.forEach(({ overlay, rows }, i) => {
+    painters[i].draw(overlay.dl, overlay.dl.other ?? []);
+    for (const r of rows) painters[i].draw(overlay.dl, r.line.items, r.dx, r.dy);
+  });
   if (renderToken.get(n) !== token) return;
   const old = el.querySelector('canvas')!;
   canvas.style.width = el.style.width;
@@ -624,6 +617,7 @@ window.addEventListener('message', (ev: MessageEvent<HostToWebview>) => {
         placements: m.placements,
         keepFromRevision: m.keepFromRevision,
       });
+      for (const p of m.pages) pagePdfSerial.set(p.page, m.pdf ? pdfSerial + 1 : Infinity);
       if (m.pdf) {
         const serial = ++pdfSerial;
         openPdf(m.pdf).then(
@@ -635,6 +629,7 @@ window.addEventListener('message', (ev: MessageEvent<HostToWebview>) => {
             const old = pdfDoc;
             pdfDoc = doc;
             pdfPages = doc.numPages;
+            pdfSerialLoaded = serial;
             void old?.destroy();
             markDirty(model.pages.keys());
           },
@@ -671,6 +666,8 @@ window.addEventListener('message', (ev: MessageEvent<HostToWebview>) => {
       dirty.clear();
       pdfDoc = undefined;
       pdfPages = 0;
+      pdfSerialLoaded = 0;
+      pagePdfSerial.clear();
       banner.hidden = true;
       updatePageNo();
       break;

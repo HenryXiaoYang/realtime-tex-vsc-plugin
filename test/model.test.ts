@@ -91,20 +91,42 @@ test('a removed span hides its rows and draws nothing', () => {
   assert.equal(m.overlaysOn(1).length, 0);
 });
 
-test('cached pictures in a live unit move with their row', () => {
+test('cached pictures in a live unit move with their row, taken only from the unit\'s own lines', () => {
   assert.deepEqual(cachedPicture(['u', 'cached_picture', '3 100 200 300 400']), { index: 3, x: 100, y: 200, w: 300, h: 400 });
   assert.equal(cachedPicture(['u', 'pdf_literal', 'x']), undefined);
   assert.equal(cachedPicture(['g', 1, 65, 3, 0, 0, 0, 0]), undefined);
-  // page: the picture at (10, 50) pt, 80 × 30 pt; another picture elsewhere of a different size
+  // page: two pictures of the SAME size; line 0 belongs to the live unit, line 1 to another one
   const page = dl([
-    line(10, 80, { items: [['u', 'cached_picture', `7 ${10 * U} ${50 * U} ${80 * U} ${30 * U}`]] }),
-    line(10, 300, { items: [['u', 'cached_picture', `8 ${10 * U} ${270 * U} ${40 * U} ${20 * U}`]] }),
+    line(10, 80, { unit: 4, items: [['u', 'cached_picture', `7 ${10 * U} ${50 * U} ${80 * U} ${30 * U}`]] }),
+    line(10, 300, { unit: 9, items: [['u', 'cached_picture', `2 ${10 * U} ${270 * U} ${80 * U} ${30 * U}`]] }),
   ]);
-  // live unit: the same picture in the unit's frame, its row moved 12 pt down by a longer sentence
-  const unitLine = line(0, 30, { items: [['u', 'cached_picture', `7 0 0 ${80 * U} ${30 * U}`]] });
-  const moves = cachedPictureMoves(page, [{ line: unitLine, dx: 10 * U, dy: 62 * U }]);
+  // live unit: its picture (with a different index, as a separate LuaTeX run gives it), row moved 12 pt down
+  const unitLine = line(0, 30, { items: [['u', 'cached_picture', `1 0 0 ${80 * U} ${30 * U}`]] });
+  const rows = [{ line: unitLine, dx: 10 * U, dy: 62 * U }];
+  const moves = cachedPictureMoves(page, rows, new Set([0]));
   assert.deepEqual(moves, [{ src: { x: 10 * U, y: 50 * U, w: 80 * U, h: 30 * U }, dst: { x: 10 * U, y: 62 * U, w: 80 * U, h: 30 * U } }]);
-  // no counterpart of that size on the page: nothing to carry
-  const other = line(0, 30, { items: [['u', 'cached_picture', `9 0 0 ${5 * U} ${5 * U}`]] });
-  assert.deepEqual(cachedPictureMoves(page, [{ line: other, dx: 0, dy: 0 }]), []);
+  // the other unit's picture is never a candidate
+  assert.deepEqual(cachedPictureMoves(page, rows, new Set([])), []);
+  // two pictures of the same size in one unit pair one to one
+  const two = [rows[0], { line: unitLine, dx: 10 * U, dy: 300 * U }];
+  assert.equal(cachedPictureMoves(page, two, new Set([0])).length, 1);
+});
+
+test('a unit owns every page line of its capture unit, not only the lines at its placement rows', () => {
+  const m = new PreviewModel();
+  // unit 5: a text row at 100 pt (placed) and a picture row at 140 pt the placement does not pin
+  // down; another unit's row at 200 pt
+  m.applyLayout({
+    pages: [page(1, [line(10, 100, { unit: 3 }), line(40, 140, { unit: 3 }), line(10, 200, { unit: 8 })])],
+    pagesTotal: 1,
+    placements: [
+      { par_id: 5, fragments: [frag(1, [10], [100])], lines: 2, kind: 'par' },
+      { par_id: 6, fragments: [frag(1, [10], [200])], lines: 1, kind: 'par' },
+    ],
+    keepFromRevision: null,
+  });
+  assert.deepEqual([...m.ownLines(1, 5)].sort(), [0, 1]);
+  assert.deepEqual([...m.ownLines(1, 6)], [2]);
+  m.applyParagraph(5, dl([line(0, 7)], 'paragraph'), [frag(1, [10], [100])], 2);
+  assert.deepEqual([...m.hiddenLines(1)].sort(), [0, 1]);
 });
