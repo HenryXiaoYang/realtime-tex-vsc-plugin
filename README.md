@@ -1,5 +1,7 @@
 # Realtime TeX Live Preview
 
+English | [简体中文](README.zh-CN.md)
+
 A live LaTeX preview for VS Code that keeps up with your typing. It is built on
 [realtime-tex (rtex)](https://github.com/HenryXiaoYang/realtime-tex), which keeps LuaTeX running and
 re-typesets only the paragraph you are editing, in about a millisecond. Page breaks,
