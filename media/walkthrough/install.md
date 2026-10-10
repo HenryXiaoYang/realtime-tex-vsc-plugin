@@ -6,8 +6,8 @@
 cargo build --release -p rtex-cli
 ```
 
-in a terminal you can watch. It takes a few minutes, once. The extension then finds the binary by itself, so you don't need to change any settings.
+in a terminal you can watch (on Windows, in Git Bash). It takes a few minutes, once. The extension then finds the binary by itself, so you don't need to change any settings.
 
-Already built rtex yourself? Use **Locate the rtex binary** and select `target/release/rtex`.
+Already built rtex yourself? Use **Locate the rtex binary** and select `target/release/rtex` (`rtex.exe` on Windows).
 
 **Keeping it current:** the extension checks for a newer realtime-tex once a day and offers to update. Run **Realtime TeX: Update rtex Engine** any time, or set **Realtime TeX: Update Check** to `auto` or `off`.

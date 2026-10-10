@@ -1,9 +1,11 @@
 // Integration suite, run inside the VS Code extension host by runTest.ts.
 import { execFile } from 'child_process';
-import { existsSync, mkdirSync } from 'fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync } from 'fs';
+import * as os from 'os';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import type { Api } from '../../src/extension';
+import { runTask, sq } from '../../src/setup';
 
 const shots = process.env.RTEX_E2E_OUT ?? '';
 
@@ -129,7 +131,7 @@ async function steps(): Promise<void> {
   step(`exported ${path.basename(pdf)}`);
 
   // 7. a full compile that fails after the first layout keeps the pages. RTEX_E2E_SKIP_FAILED_PASS=1
-  // skips it: rtex at e5cab6a reports the body-only pass after a breaking preamble edit as Ok
+  // skips it: rtex (e5cab6a through b858819) reports the body-only pass after a breaking preamble edit as Ok
   // with the previous pages
   if (!process.env.RTEX_E2E_SKIP_FAILED_PASS) {
     const pagesBefore = s.model.pagesTotal;
@@ -167,5 +169,13 @@ async function steps(): Promise<void> {
   step(`failed first compile explained: ${sb.screen.message}`);
   await sleep(800);
   await screenshot('5-first-compile-failed.png');
+
+  // 10. the terminal tasks of Install rtex / Install TeX Live reach bash intact (Git Bash on
+  // Windows): quotes, command substitution and a path with a space
+  const out = path.join(mkdtempSync(path.join(os.tmpdir(), 'rtex task ')), "it's here.txt");
+  if (!(await runTask('Realtime TeX task check', path.dirname(out), `set -e; v="it's ok"; echo "$v $(echo nested)" > ${sq(out)}`))) throw new Error('the task failed');
+  const got = existsSync(out) ? readFileSync(out, 'utf8').trim() : '(no file)';
+  if (got !== "it's ok nested") throw new Error(`the task wrote ${got}`);
+  step(`setup task ran in ${process.platform === 'win32' ? 'Git Bash' : 'bash'}`);
   console.log(`[e2e] all ${steps.length} steps passed`);
 }

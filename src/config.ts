@@ -14,18 +14,43 @@ export function expandHome(p: string): string {
   return p.startsWith('~/') ? path.join(os.homedir(), p.slice(2)) : p;
 }
 
+const WINDOWS = process.platform === 'win32';
+
+/** Platforms rtex runs on. */
+export function platformSupported(): boolean {
+  return process.platform === 'linux' || process.platform === 'darwin' || WINDOWS;
+}
+
+/** `name` as an executable file name on this platform (`rtex` → `rtex.exe` on Windows). */
+export function exe(name: string): string {
+  return WINDOWS && !/\.exe$/i.test(name) ? `${name}.exe` : name;
+}
+
 /** The checkout made by "Install rtex (Build from Source)". */
 export function managedCheckout(ctx: vscode.ExtensionContext): string {
   return path.join(ctx.globalStorageUri.fsPath, 'realtime-tex');
 }
 
+/** The rtex binary built in the managed checkout. */
+export function managedBinary(ctx: vscode.ExtensionContext): string {
+  return path.join(managedCheckout(ctx), 'target', 'release', exe('rtex'));
+}
+
 function onPath(name: string): string | undefined {
   for (const dir of (process.env.PATH ?? '').split(path.delimiter)) {
     if (!dir) continue;
-    const p = path.join(dir, name);
-    if (existsSync(p)) return p;
+    for (const file of WINDOWS ? [exe(name), name] : [name]) {
+      const p = path.join(dir, file);
+      if (existsSync(p)) return p;
+    }
   }
   return undefined;
+}
+
+/** The key of PATH in `env`: a copy of process.env keeps Windows' spelling (`Path`), and a
+ * second `PATH` next to it would leave the child's search path to chance. */
+function pathKey(env: NodeJS.ProcessEnv): string {
+  return Object.keys(env).find((k) => k.toUpperCase() === 'PATH') ?? 'PATH';
 }
 
 export interface ServerLocation {
@@ -42,7 +67,7 @@ export function resolveServer(ctx: vscode.ExtensionContext): ServerLocation | un
     const found = onPath(p);
     return found ? { path: found, source: 'setting' } : undefined;
   }
-  const managed = path.join(managedCheckout(ctx), 'target', 'release', 'rtex');
+  const managed = managedBinary(ctx);
   if (existsSync(managed)) return { path: managed, source: 'managed' };
   const found = onPath('rtex');
   return found ? { path: found, source: 'PATH' } : undefined;
@@ -72,7 +97,8 @@ export function processEnv(ctx: vscode.ExtensionContext, server?: ServerLocation
   }
   if (bin) {
     env.RTEX_TEXLIVE_BIN = bin;
-    env.PATH = `${bin}${path.delimiter}${env.PATH ?? ''}`;
+    const key = pathKey(env);
+    env[key] = `${bin}${path.delimiter}${env[key] ?? ''}`;
   }
   const texDir = expandHome(cfg().get<string>('texDir', '').trim());
   if (texDir) env.RTEX_TEXDIR = texDir;

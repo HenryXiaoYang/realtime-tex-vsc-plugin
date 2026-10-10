@@ -1,7 +1,7 @@
 import { promises as fs } from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
-import { cfg, debugDir, isTexDocument, processEnv, resolveServer } from './config';
+import { cfg, debugDir, isTexDocument, platformSupported, processEnv, resolveServer } from './config';
 import { PreviewPanel, VIEW_TYPE } from './preview/panel';
 import { ResourceLoader } from './resources';
 import { findMainFile, isMainFile } from './root';
@@ -203,13 +203,8 @@ async function openPreview(uri: vscode.Uri | undefined, beside: boolean): Promis
   if (!panel) panel = PreviewPanel.create(ctx, panelHost, column, true);
   else panel.reveal(true);
 
-  if (process.platform !== 'linux' && process.platform !== 'darwin') {
-    panel.showScreen({
-      screen: 'unsupported',
-      message:
-        'The rtex engine runs on Linux and macOS. On Windows, open this folder in WSL ("WSL: Reopen Folder in WSL") and install the extension there.',
-      actions: [{ label: 'Learn about WSL', command: 'vscode.open', args: ['https://code.visualstudio.com/docs/remote/wsl'], primary: true }],
-    });
+  if (!platformSupported()) {
+    panel.showScreen({ screen: 'unsupported', message: `The rtex engine runs on Linux, macOS and Windows, not on ${process.platform}.` });
     return;
   }
   const doc = targetDocument(uri);
@@ -246,7 +241,7 @@ async function startFor(main: string): Promise<void> {
 
 async function maybeAutoStart(doc: vscode.TextDocument): Promise<void> {
   if (!cfg(doc.uri).get<boolean>('autoStart', false) || session?.running) return;
-  if (process.platform !== 'linux' && process.platform !== 'darwin') return;
+  if (!platformSupported()) return;
   const main = await mainFileFor(doc.uri);
   if (main && resolveServer(ctx)) await startFor(main);
 }

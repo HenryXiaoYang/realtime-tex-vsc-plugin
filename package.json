@@ -214,7 +214,7 @@
         "realtimeTex.texliveBin": {
           "type": "string",
           "default": "",
-          "markdownDescription": "Folder that contains `lualatex` (TeX Live 2026 or newer). Leave empty to use your `PATH`. Example: `/usr/local/texlive/2026/bin/x86_64-linux`.",
+          "markdownDescription": "Folder that contains `lualatex` (TeX Live 2026 or newer). Leave empty to use your `PATH`. Examples: `/usr/local/texlive/2026/bin/x86_64-linux`, `C:\\texlive\\2026\\bin\\windows`.",
           "scope": "machine-overridable"
         },
         "realtimeTex.texDir": {
@@ -353,7 +353,7 @@
           {
             "id": "checkSetup",
             "title": "Check your setup",
-            "description": "Realtime TeX needs **LuaLaTeX** (TeX Live 2026+) and the **rtex** engine. Linux and macOS are supported (on Windows, use WSL).\n[Check Setup](command:realtimeTex.checkSetup)",
+            "description": "Realtime TeX needs **LuaLaTeX** (TeX Live 2026+) and the **rtex** engine. Linux, macOS and Windows are supported.\n[Check Setup](command:realtimeTex.checkSetup)",
             "media": {
               "markdown": "media/walkthrough/setup.md"
             },

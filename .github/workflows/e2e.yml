@@ -1,0 +1,91 @@
+name: E2E
+
+# The integration suite (test/e2e) in a real VS Code with the real engine, on every platform the
+# extension supports: builds the latest realtime-tex and uses a cached minimal TeX Live from its
+# install script.
+on:
+  push:
+    branches: [main]
+    paths-ignore: ['**.md', 'docs/**']
+  workflow_dispatch:
+
+jobs:
+  e2e:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            tlarch: x86_64-linux
+          - os: macos-latest
+            tlarch: universal-darwin
+          - os: windows-latest
+            tlarch: windows
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 120
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Check out realtime-tex
+        uses: actions/checkout@v5
+        with:
+          repository: HenryXiaoYang/realtime-tex
+          path: rtex
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rtex
+
+      - name: Build rtex
+        working-directory: rtex
+        run: cargo build --release -p rtex-cli
+
+      - name: Cache TeX Live
+        id: tl
+        uses: actions/cache@v4
+        with:
+          path: rtex/build/texlive
+          key: texlive-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('rtex/scripts/install-texlive.sh', 'rtex/scripts/texlive.profile') }}
+
+      - name: Install TeX Live
+        if: steps.tl.outputs.cache-hit != 'true'
+        run: rtex/scripts/install-texlive.sh
+
+      - name: Write env
+        # texlive.env is a shell file; GITHUB_ENV wants bare NAME=value lines
+        run: |
+          rtex/scripts/install-texlive.sh > /dev/null
+          grep -v '^export PATH=' rtex/build/texlive.env | sed -e 's/^export //' -e 's/"//g' >> "$GITHUB_ENV"
+          bin="$PWD/rtex/build/texlive/bin/${{ matrix.tlarch }}"
+          server="$PWD/rtex/target/release/rtex"
+          if [ "$RUNNER_OS" = Windows ]; then bin="$(cygpath -w "$bin")"; server="$(cygpath -w "$server.exe")"; fi
+          echo "RTEX_E2E_TEXLIVE_BIN=$bin" >> "$GITHUB_ENV"
+          echo "RTEX_E2E_SERVER=$server" >> "$GITHUB_ENV"
+          echo "RTEX_E2E_OUT=$RUNNER_TEMP/shots" >> "$GITHUB_ENV"
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Integration suite
+        env:
+          # realtime-tex reports a full compile stopped in the preamble as Ok (see test/e2e/suite.ts)
+          RTEX_E2E_SKIP_FAILED_PASS: '1'
+        run: |
+          if [ "$RUNNER_OS" = Linux ]; then xvfb-run -a npm run test:e2e; else npm run test:e2e; fi
+
+      - name: Upload screenshots
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-shots-${{ runner.os }}
+          path: ${{ runner.temp }}/shots
+          if-no-files-found: ignore

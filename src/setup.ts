@@ -4,7 +4,7 @@ import { execFile } from 'child_process';
 import { existsSync, promises as fs } from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
-import { cfg, managedCheckout, processEnv, resolveServer } from './config';
+import { cfg, exe, managedBinary, managedCheckout, platformSupported, processEnv, resolveServer } from './config';
 
 const REPO_URL = 'https://github.com/HenryXiaoYang/realtime-tex';
 const BRANCH = 'main';
@@ -30,16 +30,39 @@ interface Check {
   fix?: { label: string; run: () => unknown };
 }
 
-const sq = (s: string) => `'${s.replace(/'/g, `'\\''`)}'`;
+const WINDOWS = process.platform === 'win32';
+
+/** A path quoted for bash. On Windows the path is written with forward slashes, which Git
+ * Bash, git and cargo all read as the same Windows path. */
+export const sq = (s: string) => `'${(WINDOWS ? s.replace(/\\/g, '/') : s).replace(/'/g, `'\\''`)}'`;
+
+/** Git for Windows' bash, which runs the build and install scripts on Windows. Found next to
+ * git itself, else in the usual install folders; never the bash.exe in System32 (that is WSL). */
+async function gitBash(): Promise<string | undefined> {
+  const roots: string[] = [];
+  const execPath = await run('git', ['--exec-path']);
+  // <root>/mingw64/libexec/git-core
+  if (execPath.ok && execPath.stdout.trim()) roots.push(path.resolve(execPath.stdout.trim(), '..', '..', '..'));
+  for (const v of ['ProgramW6432', 'ProgramFiles', 'ProgramFiles(x86)']) if (process.env[v]) roots.push(path.join(process.env[v]!, 'Git'));
+  if (process.env.LOCALAPPDATA) roots.push(path.join(process.env.LOCALAPPDATA, 'Programs', 'Git'));
+  for (const root of roots) {
+    for (const p of [path.join(root, 'bin', 'bash.exe'), path.join(root, 'usr', 'bin', 'bash.exe')]) if (existsSync(p)) return p;
+  }
+  return undefined;
+}
+
+/** The shell for the terminal tasks: bash, which on Windows is Git Bash. */
+async function taskShell(): Promise<string | undefined> {
+  return WINDOWS ? gitBash() : '/bin/bash';
+}
 
 export async function runChecks(ctx: vscode.ExtensionContext): Promise<Check[]> {
   const checks: Check[] = [];
-  const supported = process.platform === 'linux' || process.platform === 'darwin';
+  const supported = platformSupported();
   checks.push({
     title: 'Operating system',
     state: supported ? 'pass' : 'fail',
-    detail: supported ? `${process.platform} is supported` : 'rtex needs Linux or macOS. On Windows, open your folder in WSL.',
-    fix: supported ? undefined : { label: 'Learn about WSL', run: () => vscode.env.openExternal(vscode.Uri.parse('https://code.visualstudio.com/docs/remote/wsl')) },
+    detail: supported ? `${process.platform} is supported` : `rtex runs on Linux, macOS and Windows, not on ${process.platform}.`,
   });
 
   const server = resolveServer(ctx);
@@ -149,7 +172,7 @@ async function fixTexLive(ctx: vscode.ExtensionContext): Promise<void> {
   if (pick?.id === 'choose') {
     const uri = await vscode.window.showOpenDialog({ canSelectFolders: true, canSelectFiles: false, title: 'Folder that contains lualatex (…/texlive/2026/bin/<platform>)' });
     if (uri?.[0]) {
-      if (!existsSync(path.join(uri[0].fsPath, 'lualatex'))) {
+      if (!existsSync(path.join(uri[0].fsPath, exe('lualatex')))) {
         void vscode.window.showWarningMessage(`There is no lualatex in ${uri[0].fsPath}.`);
         return;
       }
@@ -163,13 +186,20 @@ async function fixTexLive(ctx: vscode.ExtensionContext): Promise<void> {
   }
 }
 
-async function runTask(name: string, cwd: string, script: string): Promise<boolean> {
+/** Run a bash script in a terminal task; resolves to whether it exited with 0. The script is
+ * handed to bash as one argument (no shell in between), the same way on every platform. */
+export async function runTask(name: string, cwd: string, script: string): Promise<boolean> {
+  const shell = await taskShell();
+  if (!shell) {
+    void vscode.window.showErrorMessage(`${name} needs Git for Windows (it brings the bash that runs the setup scripts). Install it and try again.`);
+    return false;
+  }
   const task = new vscode.Task(
-    { type: 'shell', id: `realtimeTex.${name}` },
+    { type: 'process', id: `realtimeTex.${name}` },
     vscode.TaskScope.Global,
     name,
     'Realtime TeX',
-    new vscode.ShellExecution(script, { cwd, executable: '/bin/bash', shellArgs: ['-c'] }),
+    new vscode.ProcessExecution(shell, ['-c', script], { cwd }),
   );
   task.presentationOptions = { reveal: vscode.TaskRevealKind.Always, panel: vscode.TaskPanelKind.Dedicated, clear: true };
   const exec = await vscode.tasks.executeTask(task);
@@ -198,8 +228,8 @@ let building = false;
 
 /** Check git and cargo; explain what is missing. */
 async function buildToolsReady(action: string): Promise<boolean> {
-  if (process.platform !== 'linux' && process.platform !== 'darwin') {
-    void vscode.window.showErrorMessage('rtex runs on Linux and macOS. On Windows, open your folder in WSL and install it there.');
+  if (!platformSupported()) {
+    void vscode.window.showErrorMessage(`rtex runs on Linux, macOS and Windows, not on ${process.platform}.`);
     return false;
   }
   if (building) {
@@ -208,12 +238,16 @@ async function buildToolsReady(action: string): Promise<boolean> {
   }
   const [git, cargo] = await Promise.all([run('git', ['--version']), run('cargo', ['--version'])]);
   if (!git.ok) {
-    void vscode.window.showErrorMessage(`${action} needs git. Install git and try again.`);
+    void vscode.window.showErrorMessage(`${action} needs git${WINDOWS ? ' (Git for Windows)' : ''}. Install it and try again.`);
+    return false;
+  }
+  if (WINDOWS && !(await gitBash())) {
+    void vscode.window.showErrorMessage(`${action} needs the bash of Git for Windows, which was not found. Reinstall Git for Windows and try again.`);
     return false;
   }
   if (!cargo.ok) {
     const pick = await vscode.window.showErrorMessage(`rtex is built from source with Rust. Install Rust (cargo) first, then try "${action}" again.`, 'Install Rust');
-    if (pick) void vscode.env.openExternal(vscode.Uri.parse('https://rustup.rs'));
+    if (pick) void vscode.env.openExternal(vscode.Uri.parse(WINDOWS ? 'https://rustup.rs/#install-windows' : 'https://rustup.rs'));
     return false;
   }
   return true;
@@ -228,7 +262,7 @@ async function buildManaged(ctx: vscode.ExtensionContext, title: string): Promis
     return await runTask(
       title,
       path.dirname(dir),
-      `set -e; echo "${title}: ${dir}"; ${cloneScript(dir)}; cd ${sq(dir)}; git log -1 --format='realtime-tex %h %s'; cargo build --release -p rtex-cli; echo; echo "rtex built: ${path.join(dir, 'target', 'release', 'rtex')}"`,
+      `set -e; echo "${title}: ${dir}"; ${cloneScript(dir)}; cd ${sq(dir)}; git log -1 --format='realtime-tex %h %s'; cargo build --release -p rtex-cli; echo; echo "rtex built: ${managedBinary(ctx)}"`,
     );
   } finally {
     building = false;
@@ -238,7 +272,11 @@ async function buildManaged(ctx: vscode.ExtensionContext, title: string): Promis
 export async function buildFromSource(ctx: vscode.ExtensionContext, onDone: () => void): Promise<void> {
   if (!(await buildToolsReady('Install rtex'))) return;
   if (!(await buildManaged(ctx, 'Install rtex'))) {
-    void vscode.window.showErrorMessage('Installing rtex failed. The terminal shows what went wrong.');
+    void vscode.window.showErrorMessage(
+      WINDOWS
+        ? 'Installing rtex failed. The terminal shows what went wrong. On Windows, Rust needs the Visual Studio C++ Build Tools to link rtex.'
+        : 'Installing rtex failed. The terminal shows what went wrong.',
+    );
     return;
   }
   if (cfg().get<string>('serverPath', '')) await cfg().update('serverPath', '', vscode.ConfigurationTarget.Global);
@@ -332,7 +370,10 @@ export async function installTexLive(ctx: vscode.ExtensionContext): Promise<void
 }
 
 export async function selectServerPath(): Promise<boolean> {
-  const uri = await vscode.window.showOpenDialog({ canSelectFiles: true, canSelectFolders: false, title: 'Select the rtex binary (target/release/rtex)', openLabel: 'Use this rtex' });
+  const uri = await vscode.window.showOpenDialog({ canSelectFiles: true, canSelectFolders: false, title: `Select the rtex binary (target/release/${exe('rtex')})`,
+    openLabel: 'Use this rtex',
+    filters: WINDOWS ? { Programs: ['exe'] } : undefined,
+  });
   if (!uri?.[0]) return false;
   const v = await run(uri[0].fsPath, ['--version']);
   if (!v.ok) {

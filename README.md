@@ -11,13 +11,13 @@ references and bibliographies follow from a full compile in the background.
 
 ## Quick start
 
-1. Open a folder with a LaTeX project. On Linux or macOS it is used directly; on Windows, open the folder in WSL.
+1. Open a folder with a LaTeX project. Linux, macOS and Windows are supported.
 2. Open a `.tex` file and click the **preview icon** in the editor title bar, or press **Ctrl+Alt+V** (**Cmd+Alt+V** on Mac).
 3. Start typing.
 
 On first use, the preview walks you through anything that is missing:
 
-- **rtex is not installed.** Click **Install rtex**. It is built from source with Rust's `cargo`, takes a few minutes, and only happens once.
+- **rtex is not installed.** Click **Install rtex**. It is built from source with Rust's `cargo`, takes a few minutes, and only happens once. On Windows it also needs [Git for Windows](https://git-scm.com/download/win) and the Visual Studio C++ Build Tools that [rustup](https://rustup.rs) asks for.
 - **LuaLaTeX was not found.** Choose your TeX Live `bin` folder, or let the extension install a minimal TeX Live 2026.
 
 **Realtime TeX: Check Setup** in the command palette checks everything and offers a fix for each problem.
@@ -58,7 +58,7 @@ keystroke. Everything else updates with the next full compile, typically a secon
 - new page breaks.
 
 The pill says when this is happening. See rtex's
-[limitations](https://github.com/HenryXiaoYang/realtime-tex/blob/main/docs/LIMITATIONS.md) for details.
+[live editing guide](https://github.com/HenryXiaoYang/realtime-tex/blob/main/docs/live-editing.md) for details.
 
 For the fastest updates, use TFM fonts (the default, `lmodern`, …) or OpenType fonts loaded with
 `Renderer=Basic`. fontspec's default node mode works, but each keystroke takes longer.
@@ -138,6 +138,9 @@ RTEX_E2E_SERVER=/path/to/realtime-tex/target/release/rtex \
 RTEX_E2E_TEXLIVE_BIN=/path/to/texlive/2026/bin/x86_64-linux \
 xvfb-run -a npm run test:e2e
 ```
+
+On macOS and Windows, run `npm run test:e2e` without `xvfb-run`. The **E2E** workflow runs the suite on
+Linux, macOS and Windows against the latest realtime-tex.
 
 ### Layout
 

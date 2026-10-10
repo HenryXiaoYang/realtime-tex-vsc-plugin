@@ -7,6 +7,7 @@ First release.
 - Live preview that re-typesets the edited paragraph through rtex's fast path and installs background layouts as they arrive.
 - Native display-list renderer for OpenType/TrueType fonts (glyph indices) and Type1/TFM fonts (through `pdftex.map`), with colors, rules, images and graphicx transforms. Pages it cannot draw exactly fall back to the background PDF, rendered by pdf.js.
 - Live markers next to the line numbers: a solid green bar beside the parts that update live as you type, a dotted amber bar beside the parts that wait for the full compile, with the reason on hover (`realtimeTex.editor.liveMarkers`).
+- Windows support (realtime-tex `3741920`): the preview runs rtex natively on Windows. **Install rtex** and **Install TeX Live** run their scripts in Git Bash, the managed binary is `rtex.exe`, and lualatex is found as `lualatex.exe`. CI runs the integration suite on Linux, macOS and Windows.
 - Two-way navigation: the preview follows the cursor, and a double-click in the preview jumps to the source.
 - LaTeX errors and warnings in the Problems panel; a status pill and status bar entry that explain what the engine is doing.
 - Export PDF, recompile, restart and stop commands; automatic main-file detection.

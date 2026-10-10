@@ -10,13 +10,13 @@
 
 ## 快速开始
 
-1. 打开一个 LaTeX 项目文件夹。Linux 和 macOS 可以直接使用；Windows 上请在 WSL 中打开该文件夹。
+1. 打开一个 LaTeX 项目文件夹。支持 Linux、macOS 和 Windows。
 2. 打开一个 `.tex` 文件，点击编辑器标题栏上的**预览图标**，或按 **Ctrl+Alt+V**（Mac 上为 **Cmd+Alt+V**）。
 3. 开始输入。
 
 首次使用时，预览会引导你补齐缺少的部分：
 
-- **未安装 rtex。** 点击 **Install rtex**。插件会用 Rust 的 `cargo` 从源码构建，需要几分钟，只需进行一次。
+- **未安装 rtex。** 点击 **Install rtex**。插件会用 Rust 的 `cargo` 从源码构建，需要几分钟，只需进行一次。在 Windows 上还需要 [Git for Windows](https://git-scm.com/download/win)，以及 [rustup](https://rustup.rs) 安装时要求的 Visual Studio C++ 生成工具。
 - **找不到 LuaLaTeX。** 选择你的 TeX Live `bin` 文件夹，或让插件安装一个精简版 TeX Live 2026。
 
 在命令面板中运行 **Realtime TeX: Check Setup** 会检查所有环境，并为每个问题提供修复方式。
@@ -58,7 +58,7 @@
 - 新的分页。
 
 发生这种情况时，状态标签会提示你。详情请见 rtex 的
-[限制说明](https://github.com/HenryXiaoYang/realtime-tex/blob/main/docs/LIMITATIONS.md)。
+[实时编辑说明](https://github.com/HenryXiaoYang/realtime-tex/blob/main/docs/live-editing.md)。
 
 想要最快的更新速度，请使用 TFM 字体（默认字体、`lmodern` 等），或以 `Renderer=Basic` 加载的 OpenType 字体。
 fontspec 默认的 node 模式也能用，但每次按键会更慢一些。
@@ -135,6 +135,9 @@ RTEX_E2E_SERVER=/path/to/realtime-tex/target/release/rtex \
 RTEX_E2E_TEXLIVE_BIN=/path/to/texlive/2026/bin/x86_64-linux \
 xvfb-run -a npm run test:e2e
 ```
+
+在 macOS 和 Windows 上直接运行 `npm run test:e2e`，不需要 `xvfb-run`。**E2E** 工作流会在 Linux、macOS 和 Windows 上
+针对最新的 realtime-tex 运行这套测试。
 
 ### 代码结构
 
