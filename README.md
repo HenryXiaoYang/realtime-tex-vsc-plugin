@@ -7,7 +7,7 @@ A live LaTeX preview for VS Code that keeps up with your typing. It is built on
 re-typesets only the paragraph you are editing, in about a millisecond. Page breaks,
 references and bibliographies follow from a full compile in the background.
 
-![Live preview next to the editor](docs/screenshot.png)
+![Typing in the editor; the preview follows every keystroke](docs/demo.gif)
 
 ## Quick start
 

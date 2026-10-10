@@ -6,7 +6,7 @@
 [realtime-tex (rtex)](https://github.com/HenryXiaoYang/realtime-tex)：rtex 让 LuaTeX 常驻运行，
 只重新排版你正在编辑的段落，大约只需一毫秒。分页、交叉引用和参考文献则由后台的完整编译负责更新。
 
-![编辑器旁的实时预览](docs/screenshot.png)
+![在编辑器中输入，预览随每次按键更新](docs/demo.gif)
 
 ## 快速开始
 
