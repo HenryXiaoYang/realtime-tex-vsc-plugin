@@ -690,6 +690,18 @@ export class Session implements vscode.Disposable {
     return p;
   }
 
+  /** The project's .tex files outside the build directory, as engine paths (see `relPath`). */
+  private async projectTexFiles(): Promise<string[]> {
+    const uris = await vscode.workspace.findFiles(new vscode.RelativePattern(this.projectRoot, '**/*.tex'));
+    const files: string[] = [];
+    for (const uri of uris) {
+      const rel = path.relative(this.projectRoot, uri.fsPath);
+      if (rel.startsWith('..') || path.isAbsolute(rel) || uri.fsPath.startsWith(this.buildDir)) continue;
+      files.push(rel.split(path.sep).join('/'));
+    }
+    return files.sort();
+  }
+
   /** Scroll the preview to the text at `pos` in `doc`. */
   async revealInPreview(doc: vscode.TextDocument, pos: vscode.Position, force: boolean): Promise<boolean> {
     const rel = this.relPath(doc);
@@ -711,7 +723,10 @@ export class Session implements vscode.Disposable {
   async jumpToSource(page: number, _x: number, y: number): Promise<boolean> {
     const hit = hitTest(this.model.currentPlacements(), page, y);
     if (!hit) return false;
-    const files = [this.mainRel, ...[...this.shadows.keys()].filter((f) => f !== this.mainRel)];
+    const open = [this.mainRel, ...[...this.shadows.keys()].filter((f) => f !== this.mainRel)];
+    // The unit may come from a file that no editor has open, e.g. an \include'd chapter: the
+    // engine has the spans of every project file, so try the remaining .tex files too.
+    const files = [...open, ...(await this.projectTexFiles()).filter((f) => !open.includes(f))];
     for (const rel of files) {
       const span = (await this.spans(rel)).find((s) => s.id === hit.parId);
       if (!span) continue;
