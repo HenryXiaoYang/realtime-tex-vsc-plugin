@@ -2,7 +2,7 @@
   "name": "realtime-tex",
   "displayName": "Realtime TeX Live Preview",
   "description": "Live LaTeX preview that re-typesets the paragraph you are editing in about a millisecond, powered by realtime-tex (rtex).",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "publisher": "henryxiaoyang",
   "license": "MIT",
   "repository": {

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.2
+
+- Double-clicking the preview now jumps to the source even when that paragraph comes from a file no editor has open, such as an `\include`d chapter. Before, it said "No source paragraph found". Thanks to @Steve-Li-1998 (#7).
+
 ## 0.0.1
 
 First release.
