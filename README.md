@@ -45,6 +45,13 @@ The **main file** is found automatically. The extension looks for, in order:
 
 If it is ambiguous, the preview asks you to choose. The choice is saved in `realtimeTex.mainFile`.
 
+To look at one part of a project on its own, run **Preview This File Only** (editor or explorer
+context menu). A file with its own `\documentclass` is previewed as it is. A file without one (a
+chapter, a section) is wrapped in `realtimeTex.previewTemplate`, by default a plain `article`;
+add the packages and macros your parts need there. Its paths resolve from the main file's folder,
+as in the whole document. While that preview runs, the wrapper is a hidden `.rtex-preview.tex` in
+that folder.
+
 ### What updates instantly
 
 Body text, inline and display math, `\ref`/`\eqref`/`\cite` (with the numbers from the last
@@ -91,6 +98,7 @@ live on top.
 | `realtimeTex.debug.enabled` | `false` | rtex saves a debug bundle (source, context, trace, TeX log) whenever the live engine hangs or crashes, and lists every live compile in `requests.log`. **Open Debug Folder** shows them. |
 | `realtimeTex.debug.directory` | *(storage)* | Where debug bundles go. |
 | `realtimeTex.mainFile` | *(auto)* | Main file, relative to the workspace folder. |
+| `realtimeTex.previewTemplate` | *(article)* | The document **Preview This File Only** wraps around a file without `\documentclass`; `${file}` is the file's path. |
 | `realtimeTex.buildDir` | *(storage)* | Where rtex keeps build files. Empty keeps them out of your project. |
 | `realtimeTex.exportPath` | `${mainDir}/${mainName}.pdf` | Where **Export PDF** writes. |
 | `realtimeTex.syncCursor` | `true` | Preview follows the cursor. |
@@ -105,6 +113,7 @@ live on top.
 All commands are under **Realtime TeX:** in the command palette:
 
 - **Open Live Preview to the Side**
+- **Preview This File Only**
 - **Export PDF**
 - **Recompile Whole Document**
 - **Show Cursor Position in Preview**

@@ -84,3 +84,12 @@ export async function findMainFile(q: RootQuery): Promise<string | undefined> {
   if (mains.length === 1) return mains[0].file;
   return undefined;
 }
+
+/** The generated main file that previews one file on its own, in the folder the file's paths
+ * resolve from. It exists only while that preview runs. */
+export const PREVIEW_WRAPPER = '.rtex-preview.tex';
+
+/** The wrapper's text: `template` with `${file}` replaced by `relPath` (from the wrapper's folder). */
+export function previewWrapper(template: string, relPath: string): string {
+  return template.split('${file}').join(relPath.split(path.sep).join('/'));
+}

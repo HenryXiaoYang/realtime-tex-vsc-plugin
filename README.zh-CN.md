@@ -46,6 +46,8 @@
 
 如果无法确定，预览会请你选择，选择结果保存在 `realtimeTex.mainFile` 中。
 
+想单独查看项目中的某一部分时，运行 **Preview This File Only**（编辑器或资源管理器的右键菜单）。自带 `\documentclass` 的文件按原样预览；没有导言区的文件（某一章、某一节）会套用 `realtimeTex.previewTemplate` 模板，默认是最简单的 `article`，可以在模板里加上需要的宏包和自定义命令。文件中的路径按主文件所在文件夹解析，和编译整个文档时一致。预览运行期间，该文件夹里会有一个隐藏的 `.rtex-preview.tex` 作为包装文件。
+
 ### 哪些内容会即时更新
 
 正文、行内与行间公式、`\ref`/`\eqref`/`\cite`（编号取自上一次完整编译）、列表、定理、图表（内容）以及标题，
@@ -89,6 +91,7 @@ fontspec 默认的 node 模式也能用，但每次按键会更慢一些。
 | `realtimeTex.debug.enabled` | `false` | 每当实时引擎卡住或崩溃时，rtex 会保存一个调试包（源码、上下文、跟踪、TeX 日志），并把每次实时编译记录到 `requests.log`。用 **Open Debug Folder** 查看。 |
 | `realtimeTex.debug.directory` | *（插件存储）* | 调试包的保存位置。 |
 | `realtimeTex.mainFile` | *（自动）* | 主文件，相对于工作区文件夹。 |
+| `realtimeTex.previewTemplate` | *（article）* | **Preview This File Only** 为没有 `\documentclass` 的文件套用的模板，`${file}` 会替换为该文件的路径。 |
 | `realtimeTex.buildDir` | *（插件存储）* | rtex 存放构建文件的位置。留空可避免污染你的项目目录。 |
 | `realtimeTex.exportPath` | `${mainDir}/${mainName}.pdf` | **Export PDF** 的输出位置。 |
 | `realtimeTex.syncCursor` | `true` | 预览跟随光标。 |
@@ -103,6 +106,7 @@ fontspec 默认的 node 模式也能用，但每次按键会更慢一些。
 所有命令都在命令面板的 **Realtime TeX:** 下：
 
 - **Open Live Preview to the Side**：在侧边打开实时预览
+- **Preview This File Only**：只预览当前文件
 - **Export PDF**：导出 PDF
 - **Recompile Whole Document**：重新编译整个文档
 - **Show Cursor Position in Preview**：在预览中显示光标位置

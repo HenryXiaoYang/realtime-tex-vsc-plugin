@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **Preview This File Only** previews one file of a project on its own. A file with its own `\documentclass` is previewed as it is; a file without one is wrapped in the new `realtimeTex.previewTemplate` setting (a plain `article` by default), with its paths resolved from the main file's folder. Suggested by @EvanMa1 (#9).
+
 ## 0.0.2
 
 - Double-clicking the preview now jumps to the source even when that paragraph comes from a file no editor has open, such as an `\include`d chapter. Before, it said "No source paragraph found". Thanks to @Steve-Li-1998 (#7).

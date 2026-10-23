@@ -1,7 +1,7 @@
 // One rtex session for one main file: keeps rtex's buffers in sync with VS Code, turns events
 // into diagnostics and status, and forwards display lists to the preview.
 import { execFile } from 'child_process';
-import { existsSync, promises as fs } from 'fs';
+import { existsSync, promises as fs, rmSync } from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import { PreviewModel } from '../webview/model';
@@ -53,6 +53,10 @@ export class Session implements vscode.Disposable {
   readonly projectRoot: string;
   readonly mainRel: string;
   readonly buildDir: string;
+  /** The file the user previews: the main file, or the one file a preview wrapper inputs. */
+  readonly sourceFile: string;
+  /** Its name, for titles and messages. */
+  readonly name: string;
   /** Pages, placements and overlays (same rules as the webview; used to replay and to sync). */
   readonly model = new PreviewModel();
 
@@ -88,11 +92,15 @@ export class Session implements vscode.Disposable {
     readonly mainFile: string,
     private readonly log: vscode.OutputChannel,
     private readonly diagnostics: vscode.DiagnosticCollection,
+    /** Set when `mainFile` is a wrapper the session writes (and removes) to preview `file` alone. */
+    readonly preview?: { file: string; text: string },
   ) {
     this.projectRoot = path.dirname(mainFile);
     this.mainRel = path.basename(mainFile);
     this.buildDir = buildDirFor(ctx, mainFile);
-    this.statusValue.mainName = this.mainRel;
+    this.sourceFile = preview?.file ?? mainFile;
+    this.name = path.basename(this.sourceFile);
+    this.statusValue.mainName = this.name;
     this.gutter = new LiveGutter(vscode.Uri.joinPath(ctx.extensionUri, 'media'), {
       relPath: (doc) => this.relPath(doc),
       spans: (rel) => this.spans(rel),
@@ -169,6 +177,7 @@ export class Session implements vscode.Disposable {
       return;
     }
     await fs.mkdir(this.buildDir, { recursive: true });
+    if (this.preview) await fs.writeFile(this.mainFile, this.preview.text);
     const env = processEnv(this.ctx, this.server);
     this.log.appendLine(`[start] ${this.server.path} serve --project ${this.projectRoot} --main ${this.mainRel} --build ${this.buildDir}${engineArgs(vscode.Uri.file(this.mainFile)).map((a) => ' ' + a).join('')}`);
     if (env.RTEX_TEXLIVE_BIN) this.log.appendLine(`[start] TeX Live: ${env.RTEX_TEXLIVE_BIN}`);
@@ -198,7 +207,7 @@ export class Session implements vscode.Disposable {
     this.setPhase('starting');
     this.setScreen({
       screen: 'starting',
-      message: `Loading LuaLaTeX and the packages in the preamble of ${this.mainRel}. The first start takes a few seconds.`,
+      message: `Loading LuaLaTeX and the packages in the preamble of ${this.name}. The first start takes a few seconds.`,
     });
     proc.start();
     // rtex reads the files from disk; give it the editor's unsaved text
@@ -219,6 +228,7 @@ export class Session implements vscode.Disposable {
     this.proc = undefined;
     if (proc) await proc.stop();
     this.disposeWatchers();
+    this.removeWrapper();
     this.gutter.clear();
     this.setPhase('stopped');
     this.setScreen({
@@ -242,12 +252,17 @@ export class Session implements vscode.Disposable {
     void this.proc?.stop();
     this.proc = undefined;
     this.disposeWatchers();
+    this.removeWrapper();
     this.gutter.dispose();
     this.diagnostics.clear();
     clearTimeout(this.pendingTimer);
     this.outputEmitter.dispose();
     this.statusEmitter.dispose();
     this.screenEmitter.dispose();
+  }
+
+  private removeWrapper(): void {
+    if (this.preview) rmSync(this.mainFile, { force: true });
   }
 
   private onExit(proc: RtexProcess, info: ExitInfo): void {
@@ -450,7 +465,7 @@ export class Session implements vscode.Disposable {
             this.setPhase('compiling');
             this.setScreen({
               screen: 'compiling',
-              message: `Running the first full compile of ${this.mainRel}. After that, the preview updates as you type.`,
+              message: `Running the first full compile of ${this.name}. After that, the preview updates as you type.`,
             });
           }
           this.outputEmitter.fire({ kind: 'banner', text: null });
@@ -610,7 +625,7 @@ export class Session implements vscode.Disposable {
     let errors = 0;
     for (const list of this.diags.values()) {
       for (const d of list) {
-        const file = d.file ? path.resolve(this.projectRoot, d.file) : this.mainFile;
+        const file = d.file ? path.resolve(this.projectRoot, d.file) : this.sourceFile;
         const line = Math.max(0, (d.line ?? 1) - 1);
         const sev =
           d.severity === 'error'
@@ -643,7 +658,7 @@ export class Session implements vscode.Disposable {
       void vscode.window.showWarningMessage('Start the live preview first: the PDF is produced by its engine.');
       return undefined;
     }
-    const out = exportPathFor(this.mainFile);
+    const out = exportPathFor(this.sourceFile);
     await fs.mkdir(path.dirname(out), { recursive: true });
     const result = await vscode.window.withProgress(
       { location: vscode.ProgressLocation.Notification, title: `Exporting ${path.basename(out)}…`, cancellable: false },
@@ -782,7 +797,7 @@ export class Session implements vscode.Disposable {
         screen: 'compiling',
         title: `Still typesetting… (${secs} s)`,
         message:
-          `The first full compile of ${this.mainRel} is still running. Large documents take a while, and the very first LuaLaTeX run on a computer builds its font cache, which can take a few minutes.\n` +
+          `The first full compile of ${this.name} is still running. Large documents take a while, and the very first LuaLaTeX run on a computer builds its font cache, which can take a few minutes.\n` +
           'The LaTeX log shows how far it got.',
         actions: [{ label: 'Open LaTeX Log', command: 'realtimeTex.openLatexLog', primary: true }, ACTIONS.showLog, ACTIONS.restart],
       });

@@ -50,6 +50,12 @@
         "icon": "$(preview)"
       },
       {
+        "command": "realtimeTex.previewFile",
+        "title": "Preview This File Only",
+        "category": "Realtime TeX",
+        "icon": "$(file)"
+      },
+      {
         "command": "realtimeTex.exportPdf",
         "title": "Export PDF",
         "category": "Realtime TeX",
@@ -173,6 +179,11 @@
           "group": "navigation@90"
         },
         {
+          "command": "realtimeTex.previewFile",
+          "when": "editorLangId == latex || editorLangId == tex || resourceExtname == .tex",
+          "group": "navigation@90"
+        },
+        {
           "command": "realtimeTex.syncToPreview",
           "when": "realtimeTex.running && (editorLangId == latex || editorLangId == tex || resourceExtname == .tex)",
           "group": "navigation@91"
@@ -181,6 +192,11 @@
       "explorer/context": [
         {
           "command": "realtimeTex.openPreview",
+          "when": "resourceExtname == .tex",
+          "group": "navigation@90"
+        },
+        {
+          "command": "realtimeTex.previewFile",
           "when": "resourceExtname == .tex",
           "group": "navigation@90"
         }
@@ -288,6 +304,13 @@
           "type": "string",
           "default": "",
           "markdownDescription": "Main `.tex` file of the project, relative to the workspace folder. Leave empty to detect it automatically (from a `% !TEX root = \u2026` comment or the file containing `\\documentclass`).",
+          "scope": "resource"
+        },
+        "realtimeTex.previewTemplate": {
+          "type": "string",
+          "default": "\\documentclass{article}\n\\begin{document}\n\\input{${file}}\n\\end{document}\n",
+          "editPresentation": "multilineText",
+          "markdownDescription": "The document **Preview This File Only** wraps around a file without `\\documentclass` (a chapter or section of a larger project), with `${file}` replaced by the file's path. Add the document class, packages and macros the file needs. A file with its own `\\documentclass` is previewed as it is.",
           "scope": "resource"
         },
         "realtimeTex.buildDir": {

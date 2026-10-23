@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { findMainFile, includes, isMainFile, magicRoot } from '../src/root';
+import * as path from 'node:path';
+import { findMainFile, includes, isMainFile, magicRoot, previewWrapper } from '../src/root';
 
 test('magic root comment', () => {
   assert.equal(magicRoot('% !TEX root = ../main.tex\n\\section{A}'), '../main.tex');
@@ -36,4 +37,9 @@ test('main file resolution', async () => {
   assert.equal(await findMainFile({ activeFile: '/p/ch/one.tex', candidates, readFile, configured: '/p/other.tex' }), '/p/other.tex');
   // not included anywhere and two candidates: ambiguous
   assert.equal(await findMainFile({ activeFile: '/p/loose.tex', candidates, readFile }), undefined);
+});
+
+test('preview wrapper', () => {
+  const t = '\\documentclass{article}\n\\begin{document}\n\\input{${file}}\n\\end{document}\n';
+  assert.equal(previewWrapper(t, ['section', 'a.tex'].join(path.sep)), '\\documentclass{article}\n\\begin{document}\n\\input{section/a.tex}\n\\end{document}\n');
 });

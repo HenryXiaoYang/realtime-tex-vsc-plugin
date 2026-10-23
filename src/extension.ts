@@ -4,7 +4,7 @@ import * as vscode from 'vscode';
 import { cfg, debugDir, isTexDocument, platformSupported, processEnv, resolveServer } from './config';
 import { PreviewPanel, VIEW_TYPE } from './preview/panel';
 import { ResourceLoader } from './resources';
-import { findMainFile, isMainFile } from './root';
+import { findMainFile, isMainFile, PREVIEW_WRAPPER, previewWrapper } from './root';
 import { Session } from './session';
 import { pruneReleases } from './prebuilt';
 import { buildFromSource, checkForRtexUpdate, checkSetup, installRtex, selectServerPath, updateRtex } from './setup';
@@ -38,6 +38,7 @@ export function activate(context: vscode.ExtensionContext): Api {
   const reg = (id: string, fn: (...args: any[]) => unknown) => context.subscriptions.push(vscode.commands.registerCommand(id, fn));
   reg('realtimeTex.openPreview', (uri?: vscode.Uri) => openPreview(uri, true));
   reg('realtimeTex.openPreviewHere', (uri?: vscode.Uri) => openPreview(uri, false));
+  reg('realtimeTex.previewFile', (uri?: vscode.Uri) => openPreview(uri, true, true));
   reg('realtimeTex.exportPdf', () => withSession((s) => s.exportPdf()));
   reg('realtimeTex.recompile', () => withSession((s) => s.recompile()));
   reg('realtimeTex.restart', () => (session ? session.restart() : openPreview(undefined, true)));
@@ -187,7 +188,7 @@ async function readText(file: string): Promise<string | undefined> {
 }
 
 async function texCandidates(): Promise<string[]> {
-  const uris = await vscode.workspace.findFiles('**/*.tex', '{**/node_modules/**,**/.git/**,**/build/**}', 500);
+  const uris = await vscode.workspace.findFiles('**/*.tex', `{**/node_modules/**,**/.git/**,**/build/**,**/${PREVIEW_WRAPPER}}`, 500);
   return uris.map((u) => u.fsPath);
 }
 
@@ -203,7 +204,8 @@ async function mainFileFor(doc: vscode.Uri): Promise<string | undefined> {
   });
 }
 
-async function openPreview(uri: vscode.Uri | undefined, beside: boolean): Promise<void> {
+/** `alone`: preview the file itself, not the main file of its project. */
+async function openPreview(uri: vscode.Uri | undefined, beside: boolean, alone = false): Promise<void> {
   const column = beside ? vscode.ViewColumn.Beside : vscode.ViewColumn.Active;
   if (!panel) panel = PreviewPanel.create(ctx, panelHost, column, true);
   else panel.reveal(true);
@@ -218,26 +220,50 @@ async function openPreview(uri: vscode.Uri | undefined, beside: boolean): Promis
     else panel.showScreen(noFileScreen());
     return;
   }
+  if (alone) {
+    await previewAlone(doc);
+    return;
+  }
   const main = await mainFileFor(doc);
   if (!main) {
     panel.showScreen({
       screen: 'noMain',
       message: `${path.basename(doc.fsPath)} has no \\documentclass, and no single main file includes it. Choose the main file of this project (you can also add "% !TEX root = main.tex" at the top of ${path.basename(doc.fsPath)}).`,
-      actions: [{ label: 'Choose Main File…', command: 'realtimeTex.selectMainFile', primary: true }],
+      actions: [
+        { label: 'Choose Main File…', command: 'realtimeTex.selectMainFile', primary: true },
+        { label: 'Preview This File Only', command: 'realtimeTex.previewFile' },
+      ],
     });
     return;
   }
   await startFor(main);
 }
 
-async function startFor(main: string): Promise<void> {
-  if (!session || session.mainFile !== main) {
+/** Preview `doc` by itself: as its own main file when it has \documentclass, else wrapped in
+ * realtimeTex.previewTemplate. */
+async function previewAlone(doc: vscode.Uri): Promise<void> {
+  const file = doc.fsPath;
+  if (isMainFile((await readText(file)) ?? '')) return startFor(file);
+  // the wrapper sits in the project's main folder, so the file's own \input and
+  // \includegraphics paths resolve as they do in the whole document
+  const main = await mainFileFor(doc);
+  const fromMain = main && path.relative(path.dirname(main), file);
+  const root = fromMain && !fromMain.startsWith('..') && !path.isAbsolute(fromMain) ? path.dirname(main) : path.dirname(file);
+  const text = previewWrapper(cfg(doc).get<string>('previewTemplate', ''), path.relative(root, file));
+  await startFor(path.join(root, PREVIEW_WRAPPER), { file, text });
+}
+
+async function startFor(main: string, preview?: { file: string; text: string }): Promise<void> {
+  if (!session || session.mainFile !== main || session.preview?.text !== preview?.text) {
+    // another wrapper of the same folder uses the same build directory
+    if (session?.mainFile === main) await session.stop();
     session?.dispose();
     for (const d of sessionSubs) d.dispose();
     diagnostics.clear();
-    session = new Session(ctx, main, log, diagnostics);
+    session = new Session(ctx, main, log, diagnostics, preview);
     sessionSubs = [session.onStatus(() => updateUi())];
-    void ctx.workspaceState.update('realtimeTex.lastMainFile', main);
+    // a wrapper is gone once its session ends, so a restored panel reopens the last main file
+    if (!preview) void ctx.workspaceState.update('realtimeTex.lastMainFile', main);
   }
   panel?.attach(session);
   if (!session.running) await session.start();

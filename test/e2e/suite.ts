@@ -158,6 +158,25 @@ async function steps(): Promise<void> {
   await waitFor('the engine to stop', () => !s.running, 10000);
   step('engine stopped when the preview closed');
 
+  // 8b. Preview This File Only: a file without \documentclass, in the template, from the main folder
+  const part = path.join(folder, 'chapters', 'part.tex');
+  await vscode.workspace.fs.writeFile(vscode.Uri.file(part), Buffer.from('\\section{A part}\nA part previewed on its own, with $x^2$ inline.\n'));
+  const partDoc = await vscode.workspace.openTextDocument(part);
+  await vscode.window.showTextDocument(partDoc, vscode.ViewColumn.One);
+  await vscode.commands.executeCommand('realtimeTex.previewFile');
+  const wrapper = path.join(folder, '.rtex-preview.tex');
+  await waitFor('a session for the wrapper', () => api.session()?.mainFile === wrapper, 10000);
+  const sp = api.session()!;
+  if (!readFileSync(wrapper, 'utf8').includes('\\input{chapters/part.tex}')) throw new Error(`wrapper: ${readFileSync(wrapper, 'utf8')}`);
+  await waitFor('its first layout', () => sp.status.phase === 'live' && sp.model.hasLayout, 120000);
+  await waitFor('the layout to settle', () => sp.status.convergence?.state === 'Converged' && !sp.status.pending, 120000);
+  await insertAfter(partDoc, 'previewed on its own', ' and live');
+  await waitFor('a fast update in the part', () => sp.status.lastFastMs !== undefined, 30000);
+  step(`file previewed alone (${sp.model.pagesTotal} page(s)), fast update in ${sp.status.lastFastMs!.toFixed(2)} ms`);
+  api.panel()!.panel.dispose();
+  await waitFor('the wrapper to go', () => !sp.running && !existsSync(wrapper), 10000);
+  step('wrapper removed when the preview closed');
+
   // 9. a document whose first compile fails explains why instead of waiting forever
   const broken = path.join(folder, 'broken.tex');
   await vscode.workspace.fs.writeFile(
