@@ -1,3 +1,10 @@
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/HenryXiaoYang/realtime-tex-vsc-plugin/main/docs/logo-dark.png">
+    <img src="https://raw.githubusercontent.com/HenryXiaoYang/realtime-tex-vsc-plugin/main/docs/logo.png" alt="realtime-tex logo: a T. rex in sunglasses between curly braces, then -TeX" width="520">
+  </picture>
+</p>
+
 # Realtime TeX Live Preview
 
 [English](README.md) | 简体中文

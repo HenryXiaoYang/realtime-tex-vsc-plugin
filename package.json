@@ -26,6 +26,10 @@
     "realtime"
   ],
   "icon": "media/icon.png",
+  "galleryBanner": {
+    "color": "#f3f8f0",
+    "theme": "light"
+  },
   "extensionKind": [
     "workspace"
   ],
