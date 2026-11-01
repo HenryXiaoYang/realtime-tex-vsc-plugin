@@ -77,7 +77,7 @@ jobs:
             $0 ~ "^## " { if (on) exit; on = ($2 == v) ; next }
             on { print }
           ' CHANGELOG.md > notes.md
-          if [ ! -s notes.md ]; then echo "Realtime TeX Live Preview $TAG" > notes.md; fi
+          if [ ! -s notes.md ]; then echo "Realtime TeX $TAG" > notes.md; fi
           {
             echo
             echo "### Install"

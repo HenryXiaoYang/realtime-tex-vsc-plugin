@@ -5,7 +5,7 @@
   </picture>
 </p>
 
-# Realtime TeX Live Preview
+# Realtime TeX
 
 English | [简体中文](README.zh-CN.md)
 
