@@ -4,6 +4,9 @@ name: Release
 #   git tag v0.0.1 && git push origin v0.0.1   creates the release (notes from CHANGELOG.md)
 #   publishing a release in the GitHub UI      attaches the .vsix to it
 #   running the workflow by hand with a tag    (re)attaches the .vsix to an existing tag
+# It also publishes the .vsix to the VS Code Marketplace (secret VSCE_PAT) and Open VSX
+# (secret OVSX_PAT); each is skipped while its secret is unset, and a version already
+# published is skipped, so re-runs are safe.
 # The tag must match the version in package.json (v0.0.1 for "version": "0.0.1").
 on:
   push:
@@ -28,6 +31,8 @@ jobs:
     env:
       TAG: ${{ github.event.inputs.tag || github.event.release.tag_name || github.ref_name }}
       GH_TOKEN: ${{ github.token }}
+      VSCE_PAT: ${{ secrets.VSCE_PAT }}
+      OVSX_PAT: ${{ secrets.OVSX_PAT }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -91,6 +96,14 @@ jobs:
           else
             gh release create "$TAG" "$VSIX" "$VSIX.sha256" --title "$TAG" --notes-file notes.md --verify-tag
           fi
+
+      - name: Publish to the VS Code Marketplace
+        if: env.VSCE_PAT != ''
+        run: npx vsce publish --packagePath "$VSIX" --skip-duplicate
+
+      - name: Publish to Open VSX
+        if: env.OVSX_PAT != ''
+        run: npx --yes ovsx@1 publish --packagePath "$VSIX" --skip-duplicate
 
       - uses: actions/upload-artifact@v4
         with:
