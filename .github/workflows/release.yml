@@ -4,9 +4,10 @@ name: Release
 #   git tag v0.0.1 && git push origin v0.0.1   creates the release (notes from CHANGELOG.md)
 #   publishing a release in the GitHub UI      attaches the .vsix to it
 #   running the workflow by hand with a tag    (re)attaches the .vsix to an existing tag
-# It also publishes the .vsix to the VS Code Marketplace (secret VSCE_PAT) and Open VSX
-# (secret OVSX_PAT); each is skipped while its secret is unset, and a version already
-# published is skipped, so re-runs are safe.
+# It also publishes the .vsix to the VS Code Marketplace through Trusted Publishing (a policy
+# for this repo and release.yml on the publisher's Marketplace page; no token) and to
+# Open VSX (secret OVSX_PAT, skipped while unset). A version already published is
+# skipped, so re-runs are safe.
 # The tag must match the version in package.json (v0.0.1 for "version": "0.0.1").
 on:
   push:
@@ -21,6 +22,7 @@ on:
 
 permissions:
   contents: write
+  id-token: write # Marketplace Trusted Publishing (OIDC)
 
 concurrency:
   group: release-${{ github.event.inputs.tag || github.event.release.tag_name || github.ref_name }}
@@ -31,7 +33,6 @@ jobs:
     env:
       TAG: ${{ github.event.inputs.tag || github.event.release.tag_name || github.ref_name }}
       GH_TOKEN: ${{ github.token }}
-      VSCE_PAT: ${{ secrets.VSCE_PAT }}
       OVSX_PAT: ${{ secrets.OVSX_PAT }}
     steps:
       - uses: actions/checkout@v5
@@ -98,8 +99,7 @@ jobs:
           fi
 
       - name: Publish to the VS Code Marketplace
-        if: env.VSCE_PAT != ''
-        run: npx vsce publish --packagePath "$VSIX" --skip-duplicate
+        run: npx --yes @vscode/vsce@4 publish --oidc --packagePath "$VSIX" --skip-duplicate
 
       - name: Publish to Open VSX
         if: env.OVSX_PAT != ''
