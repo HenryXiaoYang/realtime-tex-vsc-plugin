@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- The extension is now called **Realtime TeX**, and new releases are published to the VS Code Marketplace.
 - **Preview This File Only** previews one file of a project on its own. A file with its own `\documentclass` is previewed as it is; a file without one is wrapped in the new `realtimeTex.previewTemplate` setting (a plain `article` by default), with its paths resolved from the main file's folder. Suggested by @EvanMa1 (#9).
 
 ## 0.0.2
