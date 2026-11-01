@@ -17,6 +17,10 @@
 
 ## 快速开始
 
+从 [VS Code 插件市场](https://marketplace.visualstudio.com/items?itemName=henryxiaoyang.realtime-tex)安装 **Realtime TeX**，或在扩展视图中搜索 "realtime tex"：
+
+<img src="https://raw.githubusercontent.com/HenryXiaoYang/realtime-tex-vsc-plugin/main/docs/marketplace.png" alt="VS Code 扩展视图中的 Realtime TeX 及其安装按钮" width="362">
+
 1. 打开一个 LaTeX 项目文件夹。支持 Linux、macOS 和 Windows。
 2. 打开一个 `.tex` 文件，点击编辑器标题栏上的**预览图标**，或按 **Ctrl+Alt+V**（Mac 上为 **Cmd+Alt+V**）。
 3. 开始输入。

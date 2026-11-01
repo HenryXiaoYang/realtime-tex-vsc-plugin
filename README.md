@@ -18,6 +18,10 @@ references and bibliographies follow from a full compile in the background.
 
 ## Quick start
 
+Install **Realtime TeX** from the [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=henryxiaoyang.realtime-tex), or search for "realtime tex" in the Extensions view:
+
+<img src="https://raw.githubusercontent.com/HenryXiaoYang/realtime-tex-vsc-plugin/main/docs/marketplace.png" alt="Realtime TeX in the Extensions view of VS Code, with its Install button" width="362">
+
 1. Open a folder with a LaTeX project. Linux, macOS and Windows are supported.
 2. Open a `.tex` file and click the **preview icon** in the editor title bar, or press **Ctrl+Alt+V** (**Cmd+Alt+V** on Mac).
 3. Start typing.
@@ -172,7 +176,9 @@ git tag v0.0.1 && git push origin v0.0.1
 The **Release** workflow builds the `.vsix`, checks that the tag matches `package.json`, and
 creates the GitHub release with the changelog section as notes and the `.vsix` (plus its
 SHA-256) attached. Publishing a release in the GitHub UI, or running the workflow by hand with a
-tag, attaches the `.vsix` to an existing release.
+tag, attaches the `.vsix` to an existing release. The same workflow publishes the `.vsix` to the
+VS Code Marketplace with Trusted Publishing (no token), and to Open VSX when the `OVSX_PAT`
+secret is set.
 
 ### Layout
 
