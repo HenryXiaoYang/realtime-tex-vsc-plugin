@@ -17,7 +17,7 @@
 
 ## 快速开始
 
-从 [VS Code 插件市场](https://marketplace.visualstudio.com/items?itemName=henryxiaoyang.realtime-tex)安装 **Realtime TeX**，或在扩展视图中搜索 "realtime tex"：
+从 [VS Code 插件市场](https://marketplace.visualstudio.com/items?itemName=henryxiaoyang.realtime-tex)（VSCodium、Cursor 等编辑器请用 [Open VSX](https://open-vsx.org/extension/henryxiaoyang/realtime-tex)）安装 **Realtime TeX**，或在扩展视图中搜索 "realtime tex"：
 
 <img src="https://raw.githubusercontent.com/HenryXiaoYang/realtime-tex-vsc-plugin/main/docs/marketplace.png" alt="VS Code 扩展视图中的 Realtime TeX 及其安装按钮" width="362">
 

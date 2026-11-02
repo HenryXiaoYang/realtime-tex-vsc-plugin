@@ -18,7 +18,7 @@ references and bibliographies follow from a full compile in the background.
 
 ## Quick start
 
-Install **Realtime TeX** from the [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=henryxiaoyang.realtime-tex), or search for "realtime tex" in the Extensions view:
+Install **Realtime TeX** from the [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=henryxiaoyang.realtime-tex) (or [Open VSX](https://open-vsx.org/extension/henryxiaoyang/realtime-tex) for VSCodium, Cursor and other editors), or search for "realtime tex" in the Extensions view:
 
 <img src="https://raw.githubusercontent.com/HenryXiaoYang/realtime-tex-vsc-plugin/main/docs/marketplace.png" alt="Realtime TeX in the Extensions view of VS Code, with its Install button" width="362">
 
