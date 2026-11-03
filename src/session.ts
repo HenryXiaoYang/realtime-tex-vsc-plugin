@@ -187,7 +187,7 @@ export class Session implements vscode.Disposable {
     }
     await fs.mkdir(this.buildDir, { recursive: true });
     if (this.preview) await fs.writeFile(this.mainFile, this.preview.text);
-    const env = processEnv(this.ctx, this.server);
+    const env = processEnv(this.ctx, this.server, this.mainFile);
     this.log.appendLine(`[start] ${this.server.path} serve --project ${this.projectRoot} --main ${this.mainRel} --build ${this.buildDir}${engineArgs(vscode.Uri.file(this.mainFile)).map((a) => ' ' + a).join('')}`);
     if (env.RTEX_TEXLIVE_BIN) this.log.appendLine(`[start] TeX Live: ${env.RTEX_TEXLIVE_BIN}`);
     const dbg = debugDir(this.ctx);

@@ -317,6 +317,13 @@
           "markdownDescription": "The document **Preview This File Only** wraps around a file without `\\documentclass` (a chapter or section of a larger project), with `${file}` replaced by the file's path. Add the document class, packages and macros the file needs. A file with its own `\\documentclass` is previewed as it is.",
           "scope": "resource"
         },
+        "realtimeTex.env": {
+          "type": "object",
+          "additionalProperties": { "type": "string" },
+          "default": {},
+          "markdownDescription": "Environment variables for rtex and the TeX programs it runs, such as `TEXMFHOME` or `TEXINPUTS` for a `texmf` folder kept in the project. Set the same ones your own build uses (LaTeX Workshop's tools, a `.latexmkrc`). `${mainDir}` is the folder of the main file, `${workspaceFolder}` the workspace folder. Example: `{ \"TEXMFHOME\": \"${mainDir}/texmf\" }`.",
+          "scope": "resource"
+        },
         "realtimeTex.buildDir": {
           "type": "string",
           "default": "",

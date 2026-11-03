@@ -130,7 +130,7 @@ function texliveEnvFile(file: string): Record<string, string> {
 }
 
 /** Environment for rtex and the TeX tools it runs. */
-export function processEnv(ctx: vscode.ExtensionContext, server?: ServerLocation): NodeJS.ProcessEnv {
+export function processEnv(ctx: vscode.ExtensionContext, server?: ServerLocation, mainFile?: string): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = { ...process.env };
   // a TeX Live installed by "Install TeX Live" (realtime-tex's scripts/install-texlive.sh), in
   // its own folder or, from earlier versions, next to the managed checkout
@@ -154,7 +154,22 @@ export function processEnv(ctx: vscode.ExtensionContext, server?: ServerLocation
     const guess = path.resolve(path.dirname(server.path), '..', '..', 'tex');
     if (existsSync(path.join(guess, 'rtex-dl.lua'))) env.RTEX_TEXDIR = guess;
   }
+  // last, so it also wins over the managed TeX Live's TEXMFHOME
+  if (mainFile) Object.assign(env, userEnv(cfg(vscode.Uri.file(mainFile)).get<Record<string, string>>('env', {}), mainFile));
   return env;
+}
+
+/** realtimeTex.env with `${mainDir}`, `${workspaceFolder}` and a leading `~/` expanded: the
+ * variables a user's own build sets (`TEXMFHOME`, `TEXINPUTS`, …) in LaTeX Workshop's tools
+ * or a `.latexmkrc`, which rtex cannot read (#14). */
+export function userEnv(vars: Record<string, unknown>, mainFile: string, wsFolder = vscode.workspace.getWorkspaceFolder(vscode.Uri.file(mainFile))?.uri.fsPath): Record<string, string> {
+  const mainDir = path.dirname(mainFile);
+  const out: Record<string, string> = {};
+  for (const [k, v] of Object.entries(vars)) {
+    if (typeof v !== 'string') continue;
+    out[k] = expandHome(v.replace(/\$\{mainDir\}/g, mainDir).replace(/\$\{workspaceFolder\}/g, wsFolder ?? mainDir));
+  }
+  return out;
 }
 
 export function buildDirFor(ctx: vscode.ExtensionContext, mainFile: string): string {

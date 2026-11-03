@@ -66,7 +66,7 @@ export function activate(context: vscode.ExtensionContext): Api {
     vscode.workspace.onDidChangeTextDocument((e) => session?.onDidChangeDocument(e)),
     vscode.workspace.onDidOpenTextDocument((d) => session?.onDidOpenDocument(d)),
     vscode.workspace.onDidChangeConfiguration((e) => {
-      const engineSettings = ['realtimeTex.engine', 'realtimeTex.debug', 'realtimeTex.serverPath', 'realtimeTex.texliveBin', 'realtimeTex.texDir', 'realtimeTex.buildDir'];
+      const engineSettings = ['realtimeTex.engine', 'realtimeTex.debug', 'realtimeTex.serverPath', 'realtimeTex.texliveBin', 'realtimeTex.texDir', 'realtimeTex.buildDir', 'realtimeTex.env'];
       if (!session?.running || !engineSettings.some((k) => e.affectsConfiguration(k))) return;
       vscode.window.setStatusBarMessage('$(sync~spin) Restarting the engine with the new settings…', 4000);
       void session.restart().then(updateUi);
@@ -120,7 +120,7 @@ const panelHost = {
     return log;
   },
   resources(s: Session): ResourceLoader {
-    if (loader?.session !== s) loader = { session: s, loader: new ResourceLoader(processEnv(ctx, resolveServer(ctx)), (m) => log.appendLine(m)) };
+    if (loader?.session !== s) loader = { session: s, loader: new ResourceLoader(processEnv(ctx, resolveServer(ctx), s.mainFile), (m) => log.appendLine(m)) };
     return loader.loader;
   },
   onPanelClosed(p: PreviewPanel) {
