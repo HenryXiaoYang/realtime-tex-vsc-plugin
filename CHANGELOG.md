@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.0.4
 
 - Text in the preview can be selected and copied: each page carries an invisible text layer over the words the canvas draws, including paragraphs updated live. Suggested by @EvanMa1 (#19).
 - New `realtimeTex.env` setting: environment variables for rtex and TeX, with `${mainDir}` and `${workspaceFolder}`. Set the `TEXMFHOME` or `TEXINPUTS` your own build uses (LaTeX Workshop's tools, a `.latexmkrc`) so the preview and **Export PDF** read the project's own `texmf` folder too (#14).
