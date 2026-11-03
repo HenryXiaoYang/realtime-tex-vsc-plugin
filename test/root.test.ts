@@ -21,22 +21,26 @@ test('include detection', () => {
   assert.ok(!includes(main, 'old.tex'));
 });
 
+// Platform-consistent absolute paths: a POSIX `/p/...` fixture is not absolute on Windows and
+// path.resolve() (used by the magic-root hop) would put it on the current drive.
+const fixtureRoot = path.join(path.parse(process.cwd()).root, 'rtex-root-fixture');
+const at = (rel: string) => path.join(fixtureRoot, ...rel.split('/'));
 const files: Record<string, string> = {
-  '/p/main.tex': '\\documentclass{book}\n\\begin{document}\n\\include{ch/one}\n\\end{document}\n',
-  '/p/ch/one.tex': '\\chapter{One}\n',
-  '/p/ch/two.tex': '% !TEX root = ../main.tex\n\\chapter{Two}\n',
-  '/p/other.tex': '\\documentclass{article}\n',
+  [at('main.tex')]: '\\documentclass{book}\n\\begin{document}\n\\include{ch/one}\n\\end{document}\n',
+  [at('ch/one.tex')]: '\\chapter{One}\n',
+  [at('ch/two.tex')]: '% !TEX root = ../main.tex\n\\chapter{Two}\n',
+  [at('other.tex')]: '\\documentclass{article}\n',
 };
 const readFile = async (f: string) => files[f];
 const candidates = Object.keys(files);
 
 test('main file resolution', async () => {
-  assert.equal(await findMainFile({ activeFile: '/p/main.tex', candidates, readFile }), '/p/main.tex');
-  assert.equal(await findMainFile({ activeFile: '/p/ch/two.tex', candidates, readFile }), '/p/main.tex');
-  assert.equal(await findMainFile({ activeFile: '/p/ch/one.tex', candidates, readFile }), '/p/main.tex');
-  assert.equal(await findMainFile({ activeFile: '/p/ch/one.tex', candidates, readFile, configured: '/p/other.tex' }), '/p/other.tex');
+  assert.equal(await findMainFile({ activeFile: at('main.tex'), candidates, readFile }), at('main.tex'));
+  assert.equal(await findMainFile({ activeFile: at('ch/two.tex'), candidates, readFile }), at('main.tex'));
+  assert.equal(await findMainFile({ activeFile: at('ch/one.tex'), candidates, readFile }), at('main.tex'));
+  assert.equal(await findMainFile({ activeFile: at('ch/one.tex'), candidates, readFile, configured: at('other.tex') }), at('other.tex'));
   // not included anywhere and two candidates: ambiguous
-  assert.equal(await findMainFile({ activeFile: '/p/loose.tex', candidates, readFile }), undefined);
+  assert.equal(await findMainFile({ activeFile: at('loose.tex'), candidates, readFile }), undefined);
 });
 
 test('preview wrapper', () => {

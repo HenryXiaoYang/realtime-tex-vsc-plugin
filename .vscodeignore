@@ -2,6 +2,7 @@
 !dist/extension.js
 !dist/webview.js
 !dist/pdf.worker.mjs
+!dist/pdf-links.worker.js
 !media/**
 !package.json
 !README.md

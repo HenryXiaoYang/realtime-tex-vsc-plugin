@@ -3,6 +3,9 @@
 ## Unreleased
 
 - The build files no longer fill the drive VS Code keeps them on: from rtex 0.0.7 they link to the files of the main file's folder instead of copying the whole folder, three times over (#13, #15). Run **Realtime TeX: Update rtex Engine** once it is released.
+- Internal link navigation keeps up to 50 previous positions. Use the mouse back button to return; positions adapt to zoom changes and are cleared when the document resets.
+- Hyperlinks in the preview: the link annotations of the background PDF (`\href`, `\url`, `\ref`, table of contents, …) are laid over the pages. Clicking one opens the URL or jumps within the document. Works on pages drawn from display lists too, and links under a paragraph being edited stay hidden until the next full compile so they cannot point at moved text.
+- PDF links are parsed in a worker from the displayed layout's PDF snapshot. Link areas and destinations account for page rotation and cropping; visible link nodes are reused to preserve keyboard focus.
 
 ## 0.0.3
 

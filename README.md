@@ -43,6 +43,7 @@ The extension keeps the rtex it installed up to date, the way it was installed: 
 | **Status pill** | **Live · 0.8 ms** means the paragraph was re-typeset that fast. **Updating layout…** means a full compile is placing pages, references and floats. **Up to date** means everything matches. **N errors** opens the Problems panel. |
 | **Live markers** | A bar next to the line numbers shows how each part of your source updates: **solid green** updates live as you type, **dotted amber** waits for the full compile (the preamble, TikZ, …). Hover over a part that went to the full compile to see why. |
 | **Follow cursor** | The preview scrolls to the paragraph you are editing. **Ctrl+Alt+J** jumps there on demand. |
+| **Links** | Click a link made by `hyperref` (`\href`, `\url`, `\ref`, a table of contents entry, …) to open it or jump within the document. Use the mouse back button to return after an internal jump (up to 50 positions). Links match the displayed layout; a link inside a paragraph you are editing reappears when the full compile catches up. |
 | **Jump to source** | Double-click (or Ctrl/Cmd+click) a paragraph in the preview. |
 | **Zoom** | Ctrl + mouse wheel, Ctrl + = / − / 0 |
 | **Export PDF** | **Ctrl+Alt+E**. Writes `main.pdf` next to the main file. The result matches a clean LuaLaTeX build. |
@@ -88,7 +89,10 @@ PDF round trip. It supports:
 
 - OpenType/TrueType fonts, by glyph index;
 - Type1 fonts, such as Computer Modern math and `lmodern`, found through TeX's `pdftex.map`;
-- colors, rules, PNG/JPEG/PDF images and graphicx scaling.
+- colors, rules, PNG/JPEG/PDF images and graphicx scaling;
+- hyperlink annotations from the background PDF (`\href`, `\url`, `\ref`, …), over pages drawn
+  either from display lists or from the PDF. Their hotspots use the same fit as the canvas and
+  the PDF snapshot of that layout.
 
 Some pages cannot be drawn this way, for example TikZ drawings or `\special`s. Those are shown
 from the background PDF, marked with a small **from PDF** badge, and edits on them still appear

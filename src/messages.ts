@@ -1,6 +1,6 @@
 // Messages between the extension host and the preview webview.
 import type { FontResource, ImageResource } from './fontKey';
-import type { DisplayList, Fragment, PageUpdate, Placement } from './protocol';
+import type { DisplayList, Fragment, PageUpdate, PdfLink, Placement } from './protocol';
 
 export type ScreenKind = 'starting' | 'compiling' | 'error' | 'noMain' | 'notInstalled' | 'stopped' | 'unsupported';
 
@@ -25,7 +25,11 @@ export type HostToWebview =
       keepFromRevision: number | null;
       /** The background PDF, when some page may need it. */
       pdf: Uint8Array | null;
+      /** Panel's monotonic display serial. It is never reused within a panel (rtex's own
+       * layout_version may restart at 1 with a new engine); links must match it exactly. */
+      layoutVersion: number;
     }
+  | { type: 'links'; links: PdfLink[]; layoutVersion: number }
   | { type: 'paragraph'; parId: number; dl: DisplayList; fragments: Fragment[]; revision: number }
   | { type: 'dropOverlays'; parIds?: number[] }
   | { type: 'resources'; fonts: [string, FontResource][]; images: [string, ImageResource][] }
@@ -37,6 +41,7 @@ export type HostToWebview =
 export type WebviewToHost =
   | { type: 'ready' }
   | { type: 'jump'; page: number; x: number; y: number }
+  | { type: 'openLink'; url: string }
   | { type: 'command'; command: string; args?: unknown[] }
   | { type: 'setFollow'; value: boolean }
   | { type: 'error'; message: string }
