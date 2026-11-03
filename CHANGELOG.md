@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- The live preview warns when the main file's folder is over 1 GB: rtex copies that folder into its build files, which could fill the drive VS Code keeps them on. With rtex 0.0.7 the build files hold one copy instead of three (#13, #15).
+
 ## 0.0.3
 
 - The extension is now called **Realtime TeX**, and new releases are published to the VS Code Marketplace.

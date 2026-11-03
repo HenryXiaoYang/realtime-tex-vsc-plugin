@@ -7,6 +7,7 @@ import * as vscode from 'vscode';
 import { PreviewModel } from '../webview/model';
 import { buildDirFor, debugDir, engineArgs, exportPathFor, processEnv, resolveServer, ServerLocation } from './config';
 import { ShadowText } from './edits';
+import { folderExceeds } from './folderSize';
 import { LiveGutter } from './gutter';
 import type { LiveMark } from './liveMarks';
 import type { Action, ScreenKind } from './messages';
@@ -158,6 +159,18 @@ export class Session implements vscode.Disposable {
   // -------------------------------------------------------------------------------------------
   // lifecycle
 
+  /** rtex copies the main file's folder into the build directory: say so when that is a lot. */
+  private async warnIfBigFolder(): Promise<void> {
+    if (warnedFolders.has(this.projectRoot)) return;
+    if (!(await folderExceeds(this.projectRoot, BIG_FOLDER, this.buildDir))) return;
+    warnedFolders.add(this.projectRoot);
+    const pick = await vscode.window.showWarningMessage(
+      `Realtime TeX copies the folder of ${this.mainRel} (over 1 GB) into its build files at ${this.buildDir}. Move the document into a folder of its own, or set Build Dir to a drive with room.`,
+      'Open Settings',
+    );
+    if (pick) void vscode.commands.executeCommand('workbench.action.openSettings', 'realtimeTex.buildDir');
+  }
+
   async start(): Promise<void> {
     if (this.running || this.disposed) return;
     this.server = resolveServer(this.ctx);
@@ -177,6 +190,7 @@ export class Session implements vscode.Disposable {
       return;
     }
     await fs.mkdir(this.buildDir, { recursive: true });
+    void this.warnIfBigFolder();
     if (this.preview) await fs.writeFile(this.mainFile, this.preview.text);
     const env = processEnv(this.ctx, this.server);
     this.log.appendLine(`[start] ${this.server.path} serve --project ${this.projectRoot} --main ${this.mainRel} --build ${this.buildDir}${engineArgs(vscode.Uri.file(this.mainFile)).map((a) => ' ' + a).join('')}`);
@@ -834,6 +848,10 @@ export class Session implements vscode.Disposable {
     this.setScreen(s);
   }
 }
+
+/** Main folders already warned about in this window. */
+const warnedFolders = new Set<string>();
+const BIG_FOLDER = 1024 ** 3;
 
 const INPUT_EXTS = /\.(bib|sty|cls|bst|bbx|cbx|lbx|cfg|def|clo|ldf|png|jpe?g|gif|eps|pdf|svg|csv|dat|lua)$/i;
 
