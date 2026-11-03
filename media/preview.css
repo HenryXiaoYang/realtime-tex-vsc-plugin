@@ -229,6 +229,24 @@ body.vscode-dark.invert .page canvas,
 body.vscode-high-contrast.invert .page canvas {
   filter: invert(0.92) hue-rotate(180deg);
 }
+/* transparent words over the canvas, for selecting and copying text */
+.text-layer {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  line-height: 1;
+  font-family: serif;
+}
+.text-layer span {
+  position: absolute;
+  color: transparent;
+  white-space: pre;
+  transform-origin: 0 0;
+  cursor: text;
+}
+.text-layer ::selection {
+  background: rgba(0, 120, 212, 0.3);
+}
 /* link annotations of the background PDF, above the canvas and below the badge */
 .link-layer {
   position: absolute;

@@ -1,4 +1,5 @@
 // The live preview webview: toolbar, guided state screens, lazily rendered pages.
+import { readingOrder, words, type Word } from './textLayer';
 import type { Action, HostToWebview, PillKind, ScreenKind, WebviewToHost } from '../src/messages';
 import { SP_PER_BP } from '../src/protocol';
 import {
@@ -276,7 +277,7 @@ function layoutPages(): void {
     const el = document.createElement('div');
     el.className = 'page';
     el.dataset.page = String(i + 1);
-    el.innerHTML = '<canvas></canvas><div class="link-layer"></div><span class="badge" hidden></span>';
+    el.innerHTML = '<canvas></canvas><div class="text-layer"></div><div class="link-layer"></div><span class="badge" hidden></span>';
     el.title = '';
     pagesEl.appendChild(el);
     observer.observe(el);
@@ -461,6 +462,9 @@ async function renderPage(n: number): Promise<void> {
   canvas.style.width = el.style.width;
   canvas.style.height = el.style.height;
   el.replaceChild(canvas, old);
+  const pageRows = lines.map((line) => ({ dl: pu.dl, line, dx: 0, dy: 0 }));
+  const liveRows = overlays.flatMap(({ overlay, rows }) => rows.map((r) => ({ dl: overlay.dl, line: r.line, dx: r.dx, dy: r.dy })));
+  renderTextLayer(el.querySelector<HTMLElement>('.text-layer')!, words(readingOrder(pageRows, liveRows)), k);
   const badge = el.querySelector<HTMLElement>('.badge')!;
   if (usePdf && !pdfFailed) {
     badge.hidden = false;
@@ -483,6 +487,30 @@ async function renderPage(n: number): Promise<void> {
 }
 
 const PT = 65536;
+
+let measure: CanvasRenderingContext2D | undefined;
+
+/** Fill `layer` with spans for `ws` at `k` CSS px per sp. */
+function renderTextLayer(layer: HTMLElement, ws: readonly Word[], k: number): void {
+  measure ??= document.createElement('canvas').getContext('2d')!;
+  const frag = document.createDocumentFragment();
+  for (const w of ws) {
+    const px = w.size * k;
+    if (px < 1) continue;
+    const span = document.createElement('span');
+    span.textContent = w.text;
+    span.style.left = `${w.x * k}px`;
+    span.style.top = `${(w.y - w.size * 0.8) * k}px`;
+    span.style.fontSize = `${px}px`;
+    measure.font = `${px}px serif`;
+    const natural = measure.measureText(w.text.trimEnd()).width;
+    if (natural > 0 && w.w > 0) span.style.transform = `scaleX(${(w.w * k) / natural})`;
+    frag.appendChild(span);
+    if (w.eol) frag.appendChild(document.createElement('br'));
+  }
+  layer.replaceChildren(frag);
+}
+
 
 /** Device-pixel rectangle of an sp rectangle under the page's base matrix (scale only). */
 function deviceRect(base: Mat, r: Rect): [number, number, number, number] {

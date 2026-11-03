@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Text in the preview can be selected and copied: each page carries an invisible text layer over the words the canvas draws, including paragraphs updated live. Suggested by @EvanMa1 (#19).
 - New `realtimeTex.env` setting: environment variables for rtex and TeX, with `${mainDir}` and `${workspaceFolder}`. Set the `TEXMFHOME` or `TEXINPUTS` your own build uses (LaTeX Workshop's tools, a `.latexmkrc`) so the preview and **Export PDF** read the project's own `texmf` folder too (#14).
 - The build files no longer fill the drive VS Code keeps them on: from rtex 0.0.7 they link to the files of the main file's folder instead of copying the whole folder, three times over (#13, #15). Run **Realtime TeX: Update rtex Engine** once it is released.
 - Internal link navigation keeps up to 50 previous positions. Use the mouse back button to return; positions adapt to zoom changes and are cleared when the document resets.
