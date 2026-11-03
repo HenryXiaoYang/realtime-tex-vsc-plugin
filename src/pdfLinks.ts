@@ -198,7 +198,10 @@ export class PdfLinkExtractor {
     if (!existsSync(file)) throw new PdfLinkError('worker', `PDF link worker not found: ${file}`);
     // Annotation extraction needs no native canvas. PDF.js probes optional canvas addons on
     // import; loading and terminating them in workers can crash the process on Windows.
-    const worker = new Worker(file, { execArgv: ['--no-addons'] });
+    // Without the addon, pdf.js prints canvas polyfill warnings on import: drop the worker's
+    // stdout (errors come back as messages).
+    const worker = new Worker(file, { execArgv: ['--no-addons'], stdout: true });
+    worker.stdout.resume();
     this.counters.workerStarts++;
     worker.on('message', (message: PdfLinkWorkerResponse) => this.onMessage(worker, message));
     worker.on('messageerror', (error: Error) => {
