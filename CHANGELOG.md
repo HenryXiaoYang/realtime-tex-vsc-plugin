@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- The live preview warns when the main file's folder is over 1 GB: rtex copies that folder into its build files, which could fill the drive VS Code keeps them on. With rtex 0.0.7 the build files hold one copy instead of three (#13, #15).
+- The build files no longer fill the drive VS Code keeps them on: from rtex 0.0.7 they link to the files of the main file's folder instead of copying the whole folder, three times over (#13, #15). Run **Realtime TeX: Update rtex Engine** once it is released.
 
 ## 0.0.3
 
