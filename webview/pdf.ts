@@ -1,6 +1,7 @@
 // pdf.js: pages the live renderer cannot draw exactly (TikZ, specials, unsupported fonts) and
 // PDF images included with \includegraphics.
 import * as pdfjs from 'pdfjs-dist/legacy/build/pdf.mjs';
+import { pdfContentBox } from './links';
 
 let workerReady: Promise<void> | undefined;
 
@@ -23,11 +24,15 @@ export async function openPdf(data: Uint8Array): Promise<PdfDoc> {
   return pdfjs.getDocument({ data: data.slice(), isEvalSupported: false, disableFontFace: false }).promise;
 }
 
-/** Render page `n` (1-based) into `ctx`, scaled to `width`×`height` device pixels. */
+/** Render page `n` (1-based) into `ctx`, scaled to `width`×`height` device pixels. The rotated
+ * and cropped PDF viewport is fit into the page canvas and anchored top-left; the link overlay
+ * uses the same `pdfContentBox` mapping, so hotspots stay on the painted content. */
 export async function renderPdfPage(doc: PdfDoc, n: number, ctx: CanvasRenderingContext2D, width: number, height: number): Promise<void> {
   const page = await doc.getPage(n);
   const vp1 = page.getViewport({ scale: 1 });
-  const viewport = page.getViewport({ scale: Math.min(width / vp1.width, height / vp1.height) });
+  const box = pdfContentBox(width, height, vp1.width / vp1.height);
+  const scale = box ? box.w / vp1.width : Math.min(width / vp1.width, height / vp1.height);
+  const viewport = page.getViewport({ scale });
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   await page.render({ canvasContext: ctx, viewport }).promise;
 }

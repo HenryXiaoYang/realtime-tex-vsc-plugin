@@ -229,10 +229,38 @@ body.vscode-dark.invert .page canvas,
 body.vscode-high-contrast.invert .page canvas {
   filter: invert(0.92) hue-rotate(180deg);
 }
+/* link annotations of the background PDF, above the canvas and below the badge */
+.link-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+}
+.pdf-link {
+  position: absolute;
+  pointer-events: auto;
+  border-radius: 2px;
+  cursor: pointer;
+  outline: none;
+}
+/* a link covered by a live edit is stale: it must not take clicks or focus */
+.pdf-link[hidden] {
+  display: none;
+}
+.pdf-link:hover,
+.pdf-link:focus-visible {
+  background: var(--vscode-editor-findMatchHighlightBackground, rgba(0, 120, 212, 0.22));
+  box-shadow: 0 0 0 1px var(--vscode-focusBorder, rgba(0, 120, 212, 0.65));
+}
+.pdf-link:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: 1px;
+}
 .badge {
   position: absolute;
   top: 6px;
   right: 6px;
+  z-index: 2;
   font-size: 10px;
   padding: 1px 6px;
   border-radius: 3px;

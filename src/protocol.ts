@@ -94,6 +94,42 @@ export interface PageUpdate {
   dl: DisplayList;
 }
 
+/** Where a link annotation in the background PDF points. */
+export type PdfLinkTarget =
+  | { kind: 'url'; url: string }
+  | {
+      kind: 'page';
+      /** 1-based page the destination is on. */
+      page: number;
+      /** Entry point from the left of the target page's viewport, 0..1. Defaults to 0. */
+      x?: number;
+      /** Entry point from the top of the target page's viewport, 0..1. */
+      y: number;
+      /** The target page's viewport.width / viewport.height after rotation and cropping. */
+      pageAspect?: number;
+      /** Raw PDF user-space x of the destination point (points, bottom-left origin). Only set
+       * when the destination names a finite x; used to map onto an unrotated display list. */
+      userX?: number;
+      /** Raw PDF user-space y of the destination point (points, bottom-left origin). */
+      userY?: number;
+    };
+
+/** A link annotation's rectangle as fractions of its page, with the top-left corner as origin. */
+export interface PdfLink {
+  /** 1-based page the link is on. */
+  page: number;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  /** The page's viewport.width / viewport.height after rotation and cropping. */
+  pageAspect?: number;
+  /** The annotation's /Rect in raw PDF user space (points, bottom-left origin), before /Rotate
+   * or /CropBox. This maps exactly onto the unrotated display list of a TeX page. */
+  userRect?: [number, number, number, number];
+  target: PdfLinkTarget;
+}
+
 export type Convergence =
   | { state: 'Converged' }
   | { state: 'Converging'; pass: number; reasons: string[] }
