@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Jump to source is exact: double-clicking (or Ctrl/Cmd+clicking) a word in the preview puts the cursor on that character in the source, not at the start of the paragraph's line. Text printed by a macro (`\ref`, `\cite`, `\today`) puts it just after the text before the macro. A first step toward editing in the preview (#11).
+
 ## 0.0.4
 
 - Text in the preview can be selected and copied: each page carries an invisible text layer over the words the canvas draws, including paragraphs updated live. Suggested by @EvanMa1 (#19).

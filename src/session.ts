@@ -23,6 +23,7 @@ import type {
 } from './protocol';
 import { ExitInfo, RtexProcess } from './rtexProcess';
 import { layoutPdfPath } from './preview/layoutLinks';
+import { clickedChar, sourceOffset } from './glyphMap';
 import { hitTest, PreviewTarget, spanAt, targetInFragments } from './sourceMap';
 import { explainReasons, Phase, SessionStatus } from './status';
 
@@ -753,9 +754,11 @@ export class Session implements vscode.Disposable {
     return true;
   }
 
-  /** Open the source of the unit at (page, y) in the preview. */
-  async jumpToSource(page: number, _x: number, y: number): Promise<boolean> {
-    const hit = hitTest(this.model.currentPlacements(), page, y);
+  /** Open the source at (page, x, y) in the preview: the character clicked when its glyph
+   * matches the source, else the unit's row there. */
+  async jumpToSource(page: number, x: number, y: number): Promise<boolean> {
+    const char = clickedChar(this.model, page, x, y);
+    const hit = char ? { parId: char.parId, fraction: char.index / Math.max(1, char.gt.text.length) } : hitTest(this.model.currentPlacements(), page, y);
     if (!hit) return false;
     const open = [this.mainRel, ...[...this.shadows.keys()].filter((f) => f !== this.mainRel)];
     // The unit may come from a file that no editor has open, e.g. an \include'd chapter: the
@@ -769,14 +772,18 @@ export class Session implements vscode.Disposable {
       const shadow = this.shadows.get(rel) ?? new ShadowText(doc.getText());
       const startOff = shadow.utf16Offset(span.range.start);
       const endOff = shadow.utf16Offset(span.range.end);
-      const at = shadow.utf16Offset(span.range.start + Math.floor(hit.fraction * (span.range.end - span.range.start)));
+      const exact = char && sourceOffset(char.gt, char.index, char.after, shadow.text.slice(startOff, endOff));
       const visibleEditor = vscode.window.visibleTextEditors.find((e) => e.document.uri.fsPath === uri.fsPath);
       const editor = await vscode.window.showTextDocument(doc, {
         viewColumn: visibleEditor?.viewColumn ?? vscode.ViewColumn.One,
         preserveFocus: false,
       });
-      let pos = doc.positionAt(at);
-      pos = new vscode.Position(pos.line, doc.lineAt(pos.line).firstNonWhitespaceCharacterIndex);
+      let pos: vscode.Position;
+      if (exact !== undefined) pos = doc.positionAt(startOff + exact);
+      else {
+        pos = doc.positionAt(shadow.utf16Offset(span.range.start + Math.floor(hit.fraction * (span.range.end - span.range.start))));
+        pos = new vscode.Position(pos.line, doc.lineAt(pos.line).firstNonWhitespaceCharacterIndex);
+      }
       editor.selection = new vscode.Selection(pos, pos);
       editor.revealRange(new vscode.Range(pos, pos), vscode.TextEditorRevealType.InCenterIfOutsideViewport);
       flashRange(editor, new vscode.Range(doc.positionAt(startOff), doc.positionAt(endOff)));

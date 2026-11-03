@@ -38,17 +38,26 @@ export function glyphText(char: number, index: unknown): string {
   return String.fromCodePoint(char).normalize('NFKC');
 }
 
-/** Words of `rows`, in their order: glyphs on one baseline join into a word until a gap wider
- * than a sixth of the font size, which becomes a space. */
-export function words(rows: readonly TextRow[]): Word[] {
-  const out: Word[] = [];
-  for (const { dl, line, dx, dy } of rows) {
-    let cur: Word | undefined;
+/** A glyph that has text, in sp. `gap` says what separates it from the glyph before it in its
+ * row: nothing, a space, or a break without a space (another baseline, a jump back). */
+export interface RowGlyph {
+  x: number;
+  y: number;
+  adv: number;
+  size: number;
+  text: string;
+  /** Index of its row in the `rows` passed in. */
+  row: number;
+  gap: 'none' | 'space' | 'break';
+}
+
+/** The glyphs of `rows` that have text, in order: a gap wider than a sixth of the font size is a
+ * space. */
+export function rowGlyphs(rows: readonly TextRow[]): RowGlyph[] {
+  const out: RowGlyph[] = [];
+  rows.forEach(({ dl, line, dx, dy }, row) => {
+    let prev: RowGlyph | undefined;
     let end = 0;
-    const flush = () => {
-      if (cur && cur.text) out.push(cur);
-      cur = undefined;
-    };
     for (const it of line.items as Item[]) {
       if (it[0] !== 'g') continue;
       const [, font, char, index, gx, gy, adv] = it as [string, number, number, number | null, number, number, number];
@@ -57,18 +66,43 @@ export function words(rows: readonly TextRow[]): Word[] {
       const size = dl.fonts[String(font)]?.size ?? 655360;
       const x = gx + dx;
       const y = gy + dy;
-      if (cur && (Math.abs(y - cur.y) > size * 0.3 || x - end > size / 6 || x < end - size)) {
-        if (Math.abs(y - cur.y) <= size * 0.3) cur.text += ' ';
-        flush();
+      let gap: RowGlyph['gap'] = 'none';
+      if (prev && (Math.abs(y - prev.y) > size * 0.3 || x - end > size / 6 || x < end - size)) {
+        gap = Math.abs(y - prev.y) <= size * 0.3 ? 'space' : 'break';
       }
-      if (!cur) cur = { x, y, w: 0, size, text: '', eol: false };
-      cur.text += text;
+      prev = { x, y, adv: adv ?? 0, size, text, row, gap };
+      out.push(prev);
       end = x + (adv ?? 0);
-      cur.w = Math.max(cur.w, end - cur.x);
     }
-    flush();
-    if (out.length) out[out.length - 1].eol = true;
+  });
+  return out;
+}
+
+/** Words of `rows`, in their order: glyphs on one baseline join into a word until a gap wider
+ * than a sixth of the font size, which becomes a space. */
+export function words(rows: readonly TextRow[]): Word[] {
+  const out: Word[] = [];
+  let cur: Word | undefined;
+  let row = -1;
+  const flush = () => {
+    if (cur) out.push(cur);
+    cur = undefined;
+  };
+  for (const g of rowGlyphs(rows)) {
+    if (g.row !== row) {
+      flush();
+      if (out.length) out[out.length - 1].eol = true;
+      row = g.row;
+    } else if (g.gap !== 'none') {
+      if (g.gap === 'space') cur!.text += ' ';
+      flush();
+    }
+    if (!cur) cur = { x: g.x, y: g.y, w: 0, size: g.size, text: '', eol: false };
+    cur.text += g.text;
+    cur.w = Math.max(cur.w, g.x + g.adv - cur.x);
   }
+  flush();
+  if (out.length) out[out.length - 1].eol = true;
   return out;
 }
 

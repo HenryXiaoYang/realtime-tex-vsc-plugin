@@ -7,6 +7,7 @@ import * as vscode from 'vscode';
 import type { Api } from '../../src/extension';
 import { activeManaged, installedRelease, releaseBinary } from '../../src/config';
 import { installRelease } from '../../src/prebuilt';
+import { glyphTextOf, unitRows } from '../../src/glyphMap';
 import { runTask, sq } from '../../src/setup';
 
 const shots = process.env.RTEX_E2E_OUT ?? '';
@@ -107,6 +108,36 @@ async function steps(): Promise<void> {
   if (!(await s.jumpToSource(f.page, f.xs[0], f.baselines[0]))) throw new Error('jumpToSource failed');
   const active = vscode.window.activeTextEditor!;
   step(`preview click on unit ${parId} opened ${path.basename(active.document.fileName)}:${active.selection.active.line + 1}`);
+  // a click on a word puts the cursor on that character: plain text, a live paragraph, text in
+  // a macro argument and a list, text after a source line break, and an \input file
+  // [preview text, the word clicked in it, source text the word follows]
+  const probes: [string, string, string][] = [
+    ['A second paragraph', 'second', 'A '],
+    ['live and instantly', 'instantly', 'typeset live and '],
+    ['colour', 'colour', '{blue}{'],
+    ['figures and tables', 'tables', 'figures and '],
+    ['wrap over two lines', 'over', 'wrap\n'],
+    ['Text from an included file', 'included', 'Text from an '],
+  ];
+  for (const [context, word, before] of probes) {
+    let where: { page: number; x: number; y: number } | undefined;
+    for (let n = 1; n <= s.model.pagesTotal && !where; n++) {
+      for (const rows of unitRows(s.model, n).values()) {
+        const gt = glyphTextOf(rows);
+        const k = gt.text.indexOf(context);
+        const g = k >= 0 && gt.glyphs.find((g) => g.start === k + context.indexOf(word) + 1);
+        if (g) where = { page: n, x: g.x + g.adv * 0.25, y: g.y };
+      }
+    }
+    if (!where) throw new Error(`no glyphs for "${context}" in the preview`);
+    if (!(await s.jumpToSource(where.page, where.x, where.y))) throw new Error(`jumpToSource failed on "${word}"`);
+    const ed = vscode.window.activeTextEditor!;
+    const text = ed.document.getText();
+    const want = text.indexOf(before + word) + before.length + 1;
+    const got = ed.document.offsetAt(ed.selection.active);
+    if (got !== want) throw new Error(`click on "${word}" landed at ${JSON.stringify(text.slice(got - 10, got))}|${JSON.stringify(text.slice(got, got + 10))}, want offset ${want}, got ${got}`);
+  }
+  step(`a click on a word lands on that character (${probes.length} probes)`);
 
   // 4. an error shows up in the Problems panel, and goes away when fixed
   await insertAfter(main, 'A second paragraph refers', ' \\undefinedmacroxyz{}');
