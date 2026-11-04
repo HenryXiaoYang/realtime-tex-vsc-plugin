@@ -297,6 +297,7 @@ function layoutPages(): void {
     el.style.height = `${Math.round(h * k)}px`;
     dirty.add(i + 1);
   }
+  if (caretAt) showCaret(...caretAt); // a new zoom moves it
   zoomLabel.textContent = zoom === 'fitWidth' ? `${zoomPercent()} %` : `${zoom} %`;
   $<HTMLButtonElement>('fit').classList.toggle('active', zoom === 'fitWidth');
   scheduleRender();
@@ -661,6 +662,30 @@ function setFollowUi(v: boolean): void {
 }
 setFollowUi(follow);
 
+/** The editor's cursor in the preview: a caret at the character it is on, while the cursor
+ * stays there; none when the host has no exact character for it. */
+const caret = document.createElement('div');
+caret.className = 'source-caret';
+let caretAt: [number, number, number, number] | undefined;
+function showCaret(page: number, x: number, y: number, size: number | undefined): void {
+  const el = pageEl(page);
+  if (!el || size === undefined || !Number.isFinite(x) || !Number.isFinite(y)) {
+    caret.remove();
+    caretAt = undefined;
+    return;
+  }
+  caretAt = [page, x, y, size];
+  const k = cssScale();
+  caret.style.left = `${x * k - 1}px`;
+  caret.style.top = `${(y - 0.8 * size) * k}px`;
+  caret.style.height = `${1.05 * size * k}px`;
+  el.appendChild(caret);
+  // restart the blink, so a moved caret shows at once
+  caret.style.animation = 'none';
+  void caret.offsetWidth;
+  caret.style.animation = '';
+}
+
 function reveal(page: number, x: number, y: number, force: boolean, remember = false): void {
   const el = pageEl(page);
   if (!el || !Number.isFinite(x) || !Number.isFinite(y)) return;
@@ -859,6 +884,7 @@ window.addEventListener('message', (ev: MessageEvent<HostToWebview>) => {
       markDirty(model.dropOverlays(m.parIds));
       break;
     case 'reveal':
+      showCaret(m.page, m.x, m.y, m.size);
       reveal(m.page, m.x, m.y, m.force);
       break;
     case 'config':

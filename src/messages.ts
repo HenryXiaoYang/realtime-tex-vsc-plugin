@@ -33,7 +33,8 @@ export type HostToWebview =
   | { type: 'paragraph'; parId: number; dl: DisplayList; fragments: Fragment[]; revision: number }
   | { type: 'dropOverlays'; parIds?: number[] }
   | { type: 'resources'; fonts: [string, FontResource][]; images: [string, ImageResource][] }
-  | { type: 'reveal'; page: number; x: number; y: number; force: boolean }
+  /** `size`: the target is the exact character, of that font size; the preview puts a caret there. */
+  | { type: 'reveal'; page: number; x: number; y: number; force: boolean; size?: number }
   | { type: 'config'; follow: boolean; invert: boolean; zoom?: string }
   | { type: 'hint'; text: string }
   | { type: 'reset' };

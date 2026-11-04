@@ -175,49 +175,90 @@ export function align(a: string, b: string, a0 = 0, a1 = a.length, b0 = 0, b1 = 
 }
 
 /**
- * Offset in `src` (the unit's source text) of the character at `index` of `gt.text`, or the
- * offset just after it when `after`. Undefined when nothing around it matches.
+ * The visible-source character each character of `gt.text` shows (`at`, -1 for none), for the
+ * stretch `[a0, a1)` of it around `around` (the whole text unless the unit is long).
  */
-export function sourceOffset(gt: GlyphText, index: number, after: boolean, src: string): number | undefined {
+export function charMap(gt: GlyphText, src: string, around: number): { vis: Visible; at: Int32Array; a0: number; a1: number } {
   const vis = visibleSource(src);
   const n = gt.text.length;
   let [a0, a1, b0, b1] = [0, n, 0, vis.text.length];
   if (n * vis.text.length > MAX_CELLS) {
-    // a long unit: align a few hundred characters around the click with the matching stretch of
-    // the source, found by where the click falls in the unit
-    a0 = Math.max(0, index - 300);
-    a1 = Math.min(n, index + 300);
+    // a long unit: align a few hundred characters around `around` with the matching stretch of
+    // the source, found by where `around` falls in the unit
+    a0 = Math.max(0, around - 300);
+    a1 = Math.min(n, around + 300);
     const width = Math.min(vis.text.length, Math.floor(MAX_CELLS / (a1 - a0)));
-    const mid = Math.round((index / Math.max(1, n)) * vis.text.length);
+    const mid = Math.round((around / Math.max(1, n)) * vis.text.length);
     b0 = Math.max(0, Math.min(vis.text.length - width, mid - (width >> 1)));
     b1 = b0 + width;
   }
   const match = align(gt.text, vis.text, a0, a1, b0, b1);
   // The alignment's ties can put a letter on the same letter in nearby markup (a TikZ option, a
-  // coordinate, a key). The clicked word as a whole settles them: where it occurs in the source,
-  // take the occurrence the alignment points at, else the one nearest it.
-  let ws = index;
-  let we = index;
-  while (ws > 0 && gt.text[ws - 1] !== ' ') ws--;
-  while (we < n && gt.text[we] !== ' ') we++;
-  const word = foldText(gt.text.slice(ws, we));
-  const near = match[index] >= 0 ? match[index] - (index - ws) : nearestMatch(match, index, a0, a1);
-  let occ = -1;
-  if (word.trim()) {
-    for (let k = vis.text.indexOf(word); k >= 0; k = vis.text.indexOf(word, k + 1)) {
-      if (occ < 0 || (near !== undefined && Math.abs(k - near) < Math.abs(occ - near))) occ = k;
+  // coordinate, a key). Each word as a whole settles them: where it occurs in the source, take
+  // the occurrence the alignment points at, else the one nearest it.
+  const at = Int32Array.from(match);
+  for (let ws = a0; ws < a1; ) {
+    let we = ws;
+    while (we < a1 && gt.text[we] !== ' ') we++;
+    const word = foldText(gt.text.slice(ws, we));
+    if (word) {
+      const near = nearestMatch(match, ws, a0, a1, true);
+      let occ = -1;
+      for (let k = vis.text.indexOf(word), tries = 0; k >= 0 && tries < 256; k = vis.text.indexOf(word, k + 1), tries++) {
+        if (occ < 0 || (near !== undefined && Math.abs(k - near) < Math.abs(occ - near))) occ = k;
+      }
+      if (occ >= 0) for (let i = ws; i < we; i++) at[i] = occ + i - ws;
     }
+    ws = we + 1;
   }
-  if (occ >= 0) return after ? vis.end[occ + index - ws] : vis.start[occ + index - ws];
-  if (match[index] >= 0) return after ? vis.end[match[index]] : vis.start[match[index]];
+  return { vis, at, a0, a1 };
+}
+
+/**
+ * Offset in `src` (the unit's source text) of the character at `index` of `gt.text`, or the
+ * offset just after it when `after`. Undefined when nothing around it matches.
+ */
+export function sourceOffset(gt: GlyphText, index: number, after: boolean, src: string): number | undefined {
+  const { vis, at, a0, a1 } = charMap(gt, src, index);
+  if (at[index] >= 0) return after ? vis.end[at[index]] : vis.start[at[index]];
   // printed by a macro: just after the matched text before it, else just before the text after it
-  for (let k = index - 1; k >= a0; k--) if (match[k] >= 0) return vis.end[match[k]];
-  for (let k = index + 1; k < a1; k++) if (match[k] >= 0) return vis.start[match[k]];
+  for (let k = index - 1; k >= a0; k--) if (at[k] >= 0) return vis.end[at[k]];
+  for (let k = index + 1; k < a1; k++) if (at[k] >= 0) return vis.start[at[k]];
   return undefined;
 }
 
-/** The source index the alignment gives the matched character nearest `index`, shifted to `index`. */
-function nearestMatch(match: Int32Array, index: number, a0: number, a1: number): number | undefined {
+/**
+ * The inverse: the character of `gt.text` that shows the source at `offset` (an offset in
+ * `src`), with the caret before it, or after it when `after` (the offset is past its text, in
+ * markup or a macro's arguments). `distance` is how far the offset is from that character's
+ * source, 0 when the offset is on it.
+ */
+export function charAtOffset(gt: GlyphText, src: string, offset: number): { index: number; after: boolean; distance: number } | undefined {
+  const around = Math.round((offset / Math.max(1, src.length)) * gt.text.length);
+  const { vis, at, a0, a1 } = charMap(gt, src, around);
+  let best: { index: number; after: boolean; distance: number } | undefined;
+  for (let i = a0; i < a1; i++) {
+    if (at[i] < 0) continue;
+    const [s, e] = [vis.start[at[i]], vis.end[at[i]]];
+    if (offset >= s && offset < e) return { index: i, after: false, distance: 0 };
+    // the nearest character before the offset, caret after it; else the first after it
+    const c = e <= offset ? { index: i, after: true, distance: offset - e } : { index: i, after: false, distance: s - offset };
+    if (!best || c.distance < best.distance || (c.distance === best.distance && c.after)) best = c;
+  }
+  return best;
+}
+
+/** Where the caret for `char` of `gt` goes, in sp: x, baseline and font size. */
+export function caretAt(gt: GlyphText, char: { index: number; after: boolean }): { x: number; y: number; size: number } | undefined {
+  const g = gt.glyphs.find((g) => g.start <= char.index && char.index < g.start + g.text.length);
+  if (!g) return undefined;
+  return { x: g.x + (g.adv * (char.index - g.start + (char.after ? 1 : 0))) / g.text.length, y: g.y, size: g.size };
+}
+
+/** The source index the alignment gives the matched character nearest `index`, shifted to
+ * `index` (`self`: `index` itself counts). */
+function nearestMatch(match: Int32Array, index: number, a0: number, a1: number, self = false): number | undefined {
+  if (self && match[index] >= 0) return match[index];
   for (let d = 1; index - d >= a0 || index + d < a1; d++) {
     if (index - d >= a0 && match[index - d] >= 0) return match[index - d] + d;
     if (index + d < a1 && match[index + d] >= 0) return match[index + d] - d;
@@ -253,6 +294,15 @@ export function unitRows(model: PreviewModel, page: number): Map<number, TextRow
   return units;
 }
 
+/** The page's lines that no unit owns (footnote text, margin notes, running heads), one row each. */
+export function orphanRows(model: PreviewModel, page: number, units = unitRows(model, page)): TextRow[] {
+  const pu = model.pages.get(page);
+  if (!pu) return [];
+  const owned = new Set(model.hiddenLines(page));
+  for (const parId of units.keys()) for (const i of model.ownLines(page, parId)) owned.add(i);
+  return pu.dl.lines.filter((_, i) => !owned.has(i)).map((line) => ({ dl: pu.dl, line, dx: 0, dy: 0 }));
+}
+
 /** The unit and character under a click at (page, x, y), in sp, as the preview draws the page:
  * a unit's live rows where it has them, else its rows in the last layout. A page line no unit
  * owns (footnote text, which the page builder moved) may come from any unit:
@@ -266,17 +316,10 @@ export function clickedChar(
 ): { parIds: number[]; gt: GlyphText; index: number; after: boolean } | undefined {
   const units = unitRows(model, page);
   const groups: { parIds: number[]; rows: TextRow[] }[] = [...units].map(([parId, rows]) => ({ parIds: [parId], rows }));
-  const pu = model.pages.get(page);
-  if (pu) {
-    const owned = new Set(model.hiddenLines(page));
-    for (const parId of units.keys()) for (const i of model.ownLines(page, parId)) owned.add(i);
-    // its unit can be on another page (the mark's paragraph on the page before): every unit, nearest page first
-    const dist = (frags: readonly { page: number }[]) => Math.min(...frags.map((f) => Math.abs(f.page - page)));
-    const everyUnit = [...model.placements].sort((a, b) => dist(a[1]) - dist(b[1])).map(([id]) => id);
-    pu.dl.lines.forEach((line, i) => {
-      if (!owned.has(i)) groups.push({ parIds: everyUnit, rows: [{ dl: pu.dl, line, dx: 0, dy: 0 }] });
-    });
-  }
+  // its unit can be on another page (the mark's paragraph on the page before): every unit, nearest page first
+  const dist = (frags: readonly { page: number }[]) => Math.min(...frags.map((f) => Math.abs(f.page - page)));
+  const everyUnit = [...model.placements].sort((a, b) => dist(a[1]) - dist(b[1])).map(([id]) => id);
+  for (const row of orphanRows(model, page, units)) groups.push({ parIds: everyUnit, rows: [row] });
   // nearest row above or below the click, and of those (two columns) the nearest across
   let best: { parIds: number[]; rows: TextRow[]; v: number; h: number } | undefined;
   for (const { parIds, rows } of groups) {

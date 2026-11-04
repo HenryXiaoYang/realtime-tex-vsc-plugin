@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import type { DisplayList, Line } from '../src/protocol';
-import { clickedChar, glyphTextOf, matchScore, sourceOffset, visibleSource } from '../src/glyphMap';
+import { caretAt, charAtOffset, clickedChar, glyphTextOf, matchScore, sourceOffset, visibleSource } from '../src/glyphMap';
 import { PreviewModel } from '../webview/model';
 import { pdfWords } from '../webview/pdfText';
 
@@ -190,4 +190,25 @@ test('a page line no unit owns (footnote text) may come from any unit', () => {
   assert.equal(at?.gt.text, '1 Footnote words');
   assert.equal(matchScore(at!.gt, 'Text\\footnote{Footnote words.} more'), 1);
   assert.equal(matchScore(at!.gt, 'Other text'), 0);
+});
+
+test('the inverse: a source offset gives the character showing it, and its caret', () => {
+  const src = 'Hello \\textbf{world}\nsee  \\emph{next} line';
+  const ls = [line('Hello world', 100), line('see next line', 112)];
+  const gt = glyphTextOf(rows(...ls));
+  // on a character: caret before it, at its left edge
+  const w = charAtOffset(gt, src, src.indexOf('world') + 1);
+  assert.deepEqual(w, { index: gt.text.indexOf('world') + 1, after: false, distance: 0 });
+  const g = gt.glyphs[gt.text.indexOf('world') + 1 - 1]; // one glyph per character, minus the space
+  assert.deepEqual(caretAt(gt, w!), { x: g.x, y: 100 * PT, size });
+  // in markup: caret after the text before it
+  const m = charAtOffset(gt, src, src.indexOf('\\emph') + 2);
+  assert.deepEqual([gt.text[m!.index], m!.after], [' ', true]);
+  // on the next row
+  const n = charAtOffset(gt, src, src.indexOf('line') + 3);
+  assert.equal(caretAt(gt, n!)?.y, 112 * PT);
+  // past the end: after the last character
+  const end = charAtOffset(gt, src, src.length);
+  assert.deepEqual([end!.index, end!.after], [gt.text.length - 1, true]);
+  assert.equal(caretAt(gt, end!)?.x, gt.glyphs.at(-1)!.x + gt.glyphs.at(-1)!.adv);
 });

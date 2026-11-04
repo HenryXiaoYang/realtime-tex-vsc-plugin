@@ -290,6 +290,19 @@ body.vscode-high-contrast.invert .page canvas {
 .badge[hidden] {
   display: none;
 }
+.source-caret {
+  position: absolute;
+  z-index: 3;
+  width: 2px;
+  pointer-events: none;
+  background: var(--vscode-editorCursor-foreground, #528bff);
+  animation: caret-blink 1.1s steps(1) infinite;
+}
+@keyframes caret-blink {
+  50% {
+    opacity: 0;
+  }
+}
 .marker {
   position: absolute;
   pointer-events: none;
