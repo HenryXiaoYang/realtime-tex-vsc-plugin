@@ -37,6 +37,7 @@ test('visible source drops markup that prints nothing', () => {
   // the dash is one character covering both hyphens of the source
   const dash = v.text.indexOf('-');
   assert.equal(v.end[dash] - v.start[dash], 2);
+  assert.equal(visibleSource('\\multicolumn{2}{c}{Total} & 5 \\\\ \\hline').text, 'Total 5 ');
 });
 
 test('a click lands on the character in the source, across rows and markup', () => {
@@ -103,4 +104,16 @@ test('a long unit aligns a window around the click', () => {
   assert.ok(gt.text.length * visibleSource(src).text.length > 8_000_000);
   const k = gt.text.indexOf('w850');
   assert.equal(offsetAt(src, ls, k + 1), src.indexOf('w850') + 1);
+});
+
+test('in a table (one row, several baselines) a click picks the cell under it', () => {
+  // a tabular is one display-list row: its lines are glyphs on other baselines
+  const a = line('Apple banana', 100);
+  const b = line('delta echo', 112);
+  const table: Line = { ...a, d: 14 * PT, items: [...a.items, ...b.items] };
+  const at = clickedAt([table], 34 * PT, 111 * PT);
+  assert.equal(at?.gt.text, 'Apple banana delta echo');
+  assert.equal(at?.gt.text[at.index], 'c');
+  const src = 'Apple & banana \\\\\ndelta & echo';
+  assert.equal(offsetAt(src, [table], at!.index), src.indexOf('echo') + 1);
 });

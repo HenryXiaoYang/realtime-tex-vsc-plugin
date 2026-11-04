@@ -109,7 +109,7 @@ async function steps(): Promise<void> {
   const active = vscode.window.activeTextEditor!;
   step(`preview click on unit ${parId} opened ${path.basename(active.document.fileName)}:${active.selection.active.line + 1}`);
   // a click on a word puts the cursor on that character: plain text, a live paragraph, text in
-  // a macro argument and a list, text after a source line break, and an \input file
+  // a macro argument and a list, text after a source line break, an \input file, table cells
   // [preview text, the word clicked in it, source text the word follows]
   const probes: [string, string, string][] = [
     ['A second paragraph', 'second', 'A '],
@@ -118,6 +118,8 @@ async function steps(): Promise<void> {
     ['figures and tables', 'tables', 'figures and '],
     ['wrap over two lines', 'over', 'wrap\n'],
     ['Text from an included file', 'included', 'Text from an '],
+    ['echo', 'echo', 'delta & '],
+    ['india', 'india', 'hotel & '],
   ];
   for (const [context, word, before] of probes) {
     let where: { page: number; x: number; y: number } | undefined;

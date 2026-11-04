@@ -6,7 +6,7 @@
 import type { PreviewModel } from '../webview/model';
 import { rowGlyphs, type RowGlyph, type TextRow } from '../webview/textLayer';
 
-/** The text of `rows` (words split by spaces, rows by a space) and, per glyph, where its text is. */
+/** The text of `rows` (words, rows and baselines within a row split by a space) and, per glyph, where its text is. */
 export interface GlyphText {
   text: string;
   glyphs: (RowGlyph & { start: number })[];
@@ -17,7 +17,7 @@ export function glyphTextOf(rows: readonly TextRow[]): GlyphText {
   const glyphs: GlyphText['glyphs'] = [];
   let row = -1;
   for (const g of rowGlyphs(rows)) {
-    if (text && (g.row !== row || g.gap === 'space')) text += ' ';
+    if (text && (g.row !== row || g.gap !== 'none')) text += ' ';
     row = g.row;
     glyphs.push({ ...g, start: text.length });
     text += g.text;
@@ -35,12 +35,17 @@ export function charAt(gt: GlyphText, rows: readonly TextRow[], x: number, y: nu
     const dist = y < base - line.h ? base - line.h - y : y > base + line.d ? y - base - line.d : 0;
     if (dist < bestDist && gt.glyphs.some((g) => g.row === i)) [bestRow, bestDist] = [i, dist];
   });
+  // a row can hold several baselines (a tabular is one row): the glyph nearest across among the
+  // glyphs whose own baseline is nearest the click
   let best: GlyphText['glyphs'][number] | undefined;
+  let bestV = Infinity;
   let bestX = Infinity;
   for (const g of gt.glyphs) {
     if (g.row !== bestRow) continue;
+    const [t, b] = [g.y - 0.75 * g.size, g.y + 0.25 * g.size];
+    const v = y < t ? t - y : y > b ? y - b : 0;
     const dx = x < g.x ? g.x - x : x > g.x + g.adv ? x - g.x - g.adv : 0;
-    if (dx < bestX) [best, bestX] = [g, dx];
+    if (v < bestV || (v === bestV && dx < bestX)) [best, bestV, bestX] = [g, v, dx];
   }
   if (!best) return undefined;
   // a ligature's glyph holds several characters: split its box evenly between them
@@ -60,8 +65,10 @@ export interface Visible {
 const HIDDEN_ARG = new Set([
   'label', 'ref', 'eqref', 'pageref', 'autoref', 'nameref', 'cref', 'Cref', 'cite', 'citep', 'citet', 'parencite',
   'textcite', 'autocite', 'footcite', 'nocite', 'begin', 'end', 'includegraphics', 'input', 'include', 'hspace',
-  'vspace', 'color', 'textcolor', 'href', 'index', 'hyperref', 'cline', 'multicolumn', 'setlength', 'addtolength',
+  'vspace', 'color', 'textcolor', 'href', 'index', 'hyperref', 'cline', 'multicolumn', 'multirow', 'setlength', 'addtolength',
 ]);
+
+const TWO_HIDDEN_ARGS = new Set(['multicolumn', 'multirow']);
 
 export function visibleSource(src: string): Visible {
   const v: Visible = { text: '', start: [], end: [] };
@@ -99,11 +106,13 @@ export function visibleSource(src: string): Visible {
         if (HIDDEN_ARG.has(name)) {
           for (let j = group(k, '[', ']'); j !== k; j = group(k, '[', ']')) k = j;
           k = group(k, '{', '}');
+          // a table cell's span and column spec: \multicolumn{2}{c}{text}, \multirow{3}{*}{text}
+          if (TWO_HIDDEN_ARGS.has(name)) k = group(k, '{', '}');
         }
         i = k;
       } else {
         if ('&%$#_{}'.includes(n) && n) emit(n, i, i + 2);
-        else if (n === ' ' || n === '\\') emit(' ', i, i + 2);
+        else if ((n === ' ' || n === '\\') && !v.text.endsWith(' ')) emit(' ', i, i + 2);
         i += 2;
       }
     } else if ('{}$&^_#'.includes(c)) {
