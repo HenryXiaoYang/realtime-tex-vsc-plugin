@@ -7,6 +7,13 @@ import * as vscode from 'vscode';
 import type { Api } from '../../src/extension';
 import { activeManaged, installedRelease, releaseBinary } from '../../src/config';
 import { installRelease } from '../../src/prebuilt';
+import { pathToFileURL } from 'url';
+import { glyphTextOf, unitRows } from '../../src/glyphMap';
+import { pdfContentBox } from '../../webview/links';
+import { pdfWords } from '../../webview/pdfText';
+import type { PreviewModel } from '../../webview/model';
+import type { PdfWord } from '../../src/messages';
+import { clickEveryWord, stressDoc } from './stress';
 import { runTask, sq } from '../../src/setup';
 
 const shots = process.env.RTEX_E2E_OUT ?? '';
@@ -33,6 +40,26 @@ async function insertAfter(doc: vscode.TextDocument, needle: string, text: strin
   const editor = await vscode.window.showTextDocument(doc, vscode.ViewColumn.One);
   const at = doc.positionAt(doc.getText().indexOf(needle) + needle.length);
   await editor.edit((e) => e.insert(at, text));
+}
+
+/** The PDF text of `pages` of `pdf`, placed as the preview places it (webview/pdf.ts pdfPageWords). */
+async function pdfPagesText(extPath: string, pdf: string, model: PreviewModel, pages: number[]): Promise<Map<number, PdfWord[]>> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const lib = (await import('pdfjs-dist/legacy/build/pdf.mjs')) as any;
+  lib.GlobalWorkerOptions.workerSrc = pathToFileURL(path.join(extPath, 'dist', 'pdf.worker.mjs')).href;
+  const doc = await lib.getDocument({ data: new Uint8Array(readFileSync(pdf)), isEvalSupported: false, disableFontFace: true, verbosity: 0 }).promise;
+  const out = new Map<number, PdfWord[]>();
+  for (const n of pages) {
+    const pu = model.pages.get(n)!;
+    const [w, h] = [pu.dl.page_width!, pu.dl.page_height!];
+    const page = await doc.getPage(n);
+    const vp1 = page.getViewport({ scale: 1 });
+    const box = pdfContentBox(w, h, vp1.width / vp1.height);
+    const scale = box ? box.w / vp1.width : Math.min(w / vp1.width, h / vp1.height);
+    out.set(n, pdfWords((await page.getTextContent()).items, page.getViewport({ scale }).transform, scale));
+  }
+  await doc.destroy();
+  return out;
 }
 
 export async function run(): Promise<void> {
@@ -107,6 +134,38 @@ async function steps(): Promise<void> {
   if (!(await s.jumpToSource(f.page, f.xs[0], f.baselines[0]))) throw new Error('jumpToSource failed');
   const active = vscode.window.activeTextEditor!;
   step(`preview click on unit ${parId} opened ${path.basename(active.document.fileName)}:${active.selection.active.line + 1}`);
+  // a click on a word puts the cursor on that character: plain text, a live paragraph, text in
+  // a macro argument and a list, text after a source line break, an \input file, table cells
+  // [preview text, the word clicked in it, source text the word follows]
+  const probes: [string, string, string][] = [
+    ['A second paragraph', 'second', 'A '],
+    ['live and instantly', 'instantly', 'typeset live and '],
+    ['colour', 'colour', '{blue}{'],
+    ['figures and tables', 'tables', 'figures and '],
+    ['wrap over two lines', 'over', 'wrap\n'],
+    ['Text from an included file', 'included', 'Text from an '],
+    ['echo', 'echo', 'delta & '],
+    ['india', 'india', 'hotel & '],
+  ];
+  for (const [context, word, before] of probes) {
+    let where: { page: number; x: number; y: number } | undefined;
+    for (let n = 1; n <= s.model.pagesTotal && !where; n++) {
+      for (const rows of unitRows(s.model, n).values()) {
+        const gt = glyphTextOf(rows);
+        const k = gt.text.indexOf(context);
+        const g = k >= 0 && gt.glyphs.find((g) => g.start === k + context.indexOf(word) + 1);
+        if (g) where = { page: n, x: g.x + g.adv * 0.25, y: g.y };
+      }
+    }
+    if (!where) throw new Error(`no glyphs for "${context}" in the preview`);
+    if (!(await s.jumpToSource(where.page, where.x, where.y))) throw new Error(`jumpToSource failed on "${word}"`);
+    const ed = vscode.window.activeTextEditor!;
+    const text = ed.document.getText();
+    const want = text.indexOf(before + word) + before.length + 1;
+    const got = ed.document.offsetAt(ed.selection.active);
+    if (got !== want) throw new Error(`click on "${word}" landed at ${JSON.stringify(text.slice(got - 10, got))}|${JSON.stringify(text.slice(got, got + 10))}, want offset ${want}, got ${got}`);
+  }
+  step(`a click on a word lands on that character (${probes.length} probes)`);
 
   // 4. an error shows up in the Problems panel, and goes away when fixed
   await insertAfter(main, 'A second paragraph refers', ' \\undefinedmacroxyz{}');
@@ -134,6 +193,28 @@ async function steps(): Promise<void> {
   const pdf = await s.exportPdf();
   if (!pdf || !existsSync(pdf)) throw new Error(`export produced no PDF (${pdf})`);
   step(`exported ${path.basename(pdf)}`);
+
+  // a click on a TikZ label, text only the PDF has, lands on the label in the source. The
+  // preview reads the page's PDF text the same way (webview/pdf.ts pdfPageWords).
+  if (s.model.pagesTotal >= 2) {
+    const words = (await pdfPagesText(ext.extensionPath, pdf, s.model, [2])).get(2)!;
+    // the PDF's text sits where the display list draws the same text
+    const fromPdf = words.find((x) => x.text.startsWith('TikZ'));
+    const fromDl = [...unitRows(s.model, 2).values()].map((rows) => glyphTextOf(rows)).find((gt) => gt.text.startsWith('TikZ'))?.glyphs[0];
+    if (!fromPdf || !fromDl || Math.abs(fromPdf.x - fromDl.x) > 65536 || Math.abs(fromPdf.y - fromDl.y) > 65536) {
+      throw new Error(`PDF text at ${JSON.stringify(fromPdf)}, display list at ${JSON.stringify(fromDl && [fromDl.x, fromDl.y])}`);
+    }
+    const label = words.find((x) => x.text.includes('x') && x.y > fromPdf.y + 20 * 65536);
+    if (!label) throw new Error(`no TikZ label in the PDF text: ${JSON.stringify(words.map((x) => x.text))}`);
+    const k = Array.from(label.text).indexOf('x');
+    const adv = label.w / Array.from(label.text).length;
+    if (!(await s.jumpToSource(2, label.x + (k + 0.3) * adv, label.y - label.size * 0.3, words))) throw new Error('jumpToSource failed on the TikZ label');
+    const ed = vscode.window.activeTextEditor!;
+    const got = ed.document.offsetAt(ed.selection.active);
+    const want = ed.document.getText().indexOf('x/2');
+    if (got !== want) throw new Error(`TikZ label click landed at ${JSON.stringify(ed.document.getText().slice(got - 10, got + 10))}, offset ${got}, want ${want}`);
+    step('a click on a TikZ label lands on its source');
+  }
 
   // 7. a full compile that fails after the first layout keeps the pages. RTEX_E2E_SKIP_FAILED_PASS=1
   // skips it: rtex (e5cab6a through b858819) reports the body-only pass after a breaking preamble edit as Ok
@@ -176,6 +257,33 @@ async function steps(): Promise<void> {
   api.panel()!.panel.dispose();
   await waitFor('the wrapper to go', () => !sp.running && !existsSync(wrapper), 10000);
   step('wrapper removed when the preview closed');
+
+  // 8c. every word of a document of hard constructs (tables, TikZ, floats, footnotes, math,
+  // minipages, verbatim, …): a click on each character lands on that character in the source
+  {
+    const stress = stressDoc();
+    const file = path.join(folder, 'stress', 'stress.tex');
+    await vscode.workspace.fs.writeFile(vscode.Uri.file(file), Buffer.from(stress.tex));
+    const stressDocument = await vscode.workspace.openTextDocument(file);
+    await vscode.window.showTextDocument(stressDocument, vscode.ViewColumn.One);
+    await vscode.commands.executeCommand('realtimeTex.previewFile');
+    await waitFor('a session for the stress document', () => api.session()?.mainFile === file, 10000);
+    const ss = api.session()!;
+    await waitFor('its first layout', () => ss.status.phase === 'live' && ss.model.hasLayout, 120000);
+    await waitFor('the layout to settle', () => ss.status.convergence?.state === 'Converged' && !ss.status.pending, 120000);
+    const degraded = [...ss.model.pages.values()].filter((p) => !p.exact).map((p) => p.page);
+    const stressPdf = degraded.length ? await ss.exportPdf() : undefined;
+    const pdfText = stressPdf ? await pdfPagesText(ext.extensionPath, stressPdf, ss.model, degraded) : new Map<number, PdfWord[]>();
+    const { clicks, misses, unseen } = await clickEveryWord(ss.model, stressDocument.getText(), stress, pdfText, (page, x, y, t) => ss.sourceAt(page, x, y, t));
+    const byConstruct = new Map<string, number>();
+    for (const m of misses) byConstruct.set(m.construct, (byConstruct.get(m.construct) ?? 0) + 1);
+    console.log(`[e2e] stress: ${clicks} clicks on ${stress.words.size - unseen.length} words, ${misses.length} misses ${JSON.stringify([...byConstruct])}, unseen ${JSON.stringify(unseen)}`);
+    for (const m of misses.slice(0, 60)) console.log(`[e2e]   miss ${m.word}[${m.char}] (${m.construct}): ${m.got}`);
+    if (misses.length || unseen.length) throw new Error(`${misses.length} click(s) missed, ${unseen.length} word(s) not found in the preview`);
+    api.panel()!.panel.dispose();
+    await waitFor('the engine to stop', () => !ss.running, 10000);
+    step(`every word of the stress document maps back exactly (${clicks} clicks, ${degraded.length} page(s) from the PDF)`);
+  }
 
   // 9. a document whose first compile fails explains why instead of waiting forever
   const broken = path.join(folder, 'broken.tex');

@@ -1,7 +1,9 @@
 // pdf.js: pages the live renderer cannot draw exactly (TikZ, specials, unsupported fonts) and
 // PDF images included with \includegraphics.
 import * as pdfjs from 'pdfjs-dist/legacy/build/pdf.mjs';
+import type { PdfWord } from '../src/messages';
 import { pdfContentBox } from './links';
+import { pdfWords } from './pdfText';
 
 let workerReady: Promise<void> | undefined;
 
@@ -35,6 +37,15 @@ export async function renderPdfPage(doc: PdfDoc, n: number, ctx: CanvasRendering
   const viewport = page.getViewport({ scale });
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   await page.render({ canvasContext: ctx, viewport }).promise;
+}
+
+/** The text of page `n` placed as `renderPdfPage` draws it on a `widthSp`×`heightSp` page, in sp. */
+export async function pdfPageWords(doc: PdfDoc, n: number, widthSp: number, heightSp: number): Promise<PdfWord[]> {
+  const page = await doc.getPage(n);
+  const vp1 = page.getViewport({ scale: 1 });
+  const box = pdfContentBox(widthSp, heightSp, vp1.width / vp1.height);
+  const scale = box ? box.w / vp1.width : Math.min(widthSp / vp1.width, heightSp / vp1.height);
+  return pdfWords((await page.getTextContent()).items, page.getViewport({ scale }).transform, scale);
 }
 
 /** Rasterize a PDF image (page `n`) for drawing with drawImage. */

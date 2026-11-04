@@ -44,7 +44,7 @@ The extension keeps the rtex it installed up to date, the way it was installed: 
 | **Live markers** | A bar next to the line numbers shows how each part of your source updates: **solid green** updates live as you type, **dotted amber** waits for the full compile (the preamble, TikZ, …). Hover over a part that went to the full compile to see why. |
 | **Follow cursor** | The preview scrolls to the paragraph you are editing. **Ctrl+Alt+J** jumps there on demand. |
 | **Links** | Click a link made by `hyperref` (`\href`, `\url`, `\ref`, a table of contents entry, …) to open it or jump within the document. Use the mouse back button to return after an internal jump (up to 50 positions). Links match the displayed layout; a link inside a paragraph you are editing reappears when the full compile catches up. |
-| **Jump to source** | Double-click (or Ctrl/Cmd+click) a paragraph in the preview. |
+| **Jump to source** | Double-click (or Ctrl/Cmd+click) a word in the preview: the cursor lands on that character in the source. |
 | **Zoom** | Ctrl + mouse wheel, Ctrl + = / − / 0 |
 | **Export PDF** | **Ctrl+Alt+E**. Writes `main.pdf` next to the main file. The result matches a clean LuaLaTeX build. |
 | **Errors** | LaTeX errors and warnings appear in the Problems panel and as squiggles. |

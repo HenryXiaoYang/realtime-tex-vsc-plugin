@@ -316,7 +316,7 @@ export class PreviewPanel implements vscode.Disposable {
         this.maybeHint();
         break;
       case 'jump': {
-        const ok = await this.session?.jumpToSource(m.page, m.x, m.y);
+        const ok = await this.session?.jumpToSource(m.page, m.x, m.y, m.pdfText);
         if (!ok) vscode.window.setStatusBarMessage('$(info) No source paragraph found at that spot of the preview.', 3000);
         break;
       }
@@ -352,7 +352,7 @@ export class PreviewPanel implements vscode.Disposable {
     const key = 'realtimeTex.hintShown';
     if (this.ctx.globalState.get<boolean>(key)) return;
     void this.ctx.globalState.update(key, true);
-    this.post({ type: 'hint', text: 'Tip: double-click anywhere in the preview to jump to that paragraph in the source.' });
+    this.post({ type: 'hint', text: 'Tip: double-click a word in the preview to put the cursor there in the source.' });
   }
 
   private html(): string {

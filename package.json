@@ -442,7 +442,7 @@
           {
             "id": "navigate",
             "title": "Jump between source and preview",
-            "description": "**Double-click** in the preview to jump to that paragraph in the source. The preview follows your cursor automatically; press **Ctrl+Alt+J** to jump there on demand.",
+            "description": "**Double-click** a word in the preview to put the cursor on it in the source. The preview follows your cursor automatically; press **Ctrl+Alt+J** to jump there on demand.",
             "media": {
               "markdown": "media/walkthrough/navigate.md"
             }
