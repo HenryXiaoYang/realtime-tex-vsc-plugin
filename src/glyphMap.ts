@@ -3,6 +3,8 @@
 // markup that prints nothing taken out (longest common subsequence). Glyphs a macro printed
 // (\ref, \cite, \today) match nothing and map to the source just after the matched text before
 // them. Pure module.
+import type { DisplayList, Line } from './protocol';
+import type { PdfWord } from './messages';
 import type { PreviewModel } from '../webview/model';
 import { rowGlyphs, type RowGlyph, type TextRow } from '../webview/textLayer';
 
@@ -25,23 +27,15 @@ export function glyphTextOf(rows: readonly TextRow[]): GlyphText {
   return { text, glyphs };
 }
 
-/** A character of `text` under a click: the glyph whose box holds `x` on the row nearest `y`,
+/** A character of `text` under a click: the glyph whose box holds (`x`, `y`) or is nearest it,
  * and whether the click is on the character's right half (the caret goes after it). */
-export function charAt(gt: GlyphText, rows: readonly TextRow[], x: number, y: number): { index: number; after: boolean } | undefined {
-  let bestRow = -1;
-  let bestDist = Infinity;
-  rows.forEach(({ line, dy }, i) => {
-    const base = line.y + dy;
-    const dist = y < base - line.h ? base - line.h - y : y > base + line.d ? y - base - line.d : 0;
-    if (dist < bestDist && gt.glyphs.some((g) => g.row === i)) [bestRow, bestDist] = [i, dist];
-  });
-  // a row can hold several baselines (a tabular is one row): the glyph nearest across among the
-  // glyphs whose own baseline is nearest the click
+export function charAt(gt: GlyphText, x: number, y: number): { index: number; after: boolean; on: boolean } | undefined {
+  // by each glyph's own baseline, not its row's: a row can hold several (a tabular is one row),
+  // and PDF text runs share one. The glyph nearest across among those nearest the baseline.
   let best: GlyphText['glyphs'][number] | undefined;
   let bestV = Infinity;
   let bestX = Infinity;
   for (const g of gt.glyphs) {
-    if (g.row !== bestRow) continue;
     const [t, b] = [g.y - 0.75 * g.size, g.y + 0.25 * g.size];
     const v = y < t ? t - y : y > b ? y - b : 0;
     const dx = x < g.x ? g.x - x : x > g.x + g.adv ? x - g.x - g.adv : 0;
@@ -50,7 +44,7 @@ export function charAt(gt: GlyphText, rows: readonly TextRow[], x: number, y: nu
   if (!best) return undefined;
   // a ligature's glyph holds several characters: split its box evenly between them
   const f = best.adv > 0 ? Math.min(Math.max((x - best.x) / best.adv, 0), 0.999) * best.text.length : 0;
-  return { index: best.start + Math.floor(f), after: f - Math.floor(f) >= 0.5 };
+  return { index: best.start + Math.floor(f), after: f - Math.floor(f) >= 0.5, on: bestV === 0 && bestX === 0 };
 }
 
 /** Source text with the markup that prints nothing removed; `start`/`end` give each character's
@@ -228,6 +222,7 @@ export function clickedChar(
   page: number,
   x: number,
   y: number,
+  pdfText?: readonly PdfWord[],
 ): { parId: number; gt: GlyphText; index: number; after: boolean } | undefined {
   const units = unitRows(model, page);
   // nearest row above or below the click, and of those (two columns) the nearest across
@@ -242,7 +237,35 @@ export function clickedChar(
   }
   // farther than about two lines from any text: not a click on this unit
   if (!best || best.v > 24 * 65536) return undefined;
-  const gt = glyphTextOf(best.rows);
-  const at = charAt(gt, best.rows, x, y);
-  return at && { parId: best.parId, gt, ...at };
+  let rows = best.rows;
+  let gt = glyphTextOf(rows);
+  let at = charAt(gt, x, y);
+  // a click on text only the PDF has (a TikZ label): the unit's PDF text instead
+  const box = (w: PdfWord) => [w.x, w.x + w.w, w.y - 0.75 * w.size, w.y + 0.25 * w.size];
+  const under = (w: PdfWord, px: number, py: number) => {
+    const [l, r, t, b] = box(w);
+    return px >= l && px <= r && py >= t && py <= b;
+  };
+  if (!at?.on && pdfText?.some((w) => under(w, x, y))) {
+    const inUnit = (w: PdfWord) =>
+      best.rows.some(({ line, dx, dy }) => {
+        const [cx, cy] = [w.x + w.w / 2, w.y];
+        return cx >= line.x + dx && cx <= line.x + dx + line.w && cy >= line.y + dy - line.h && cy <= line.y + dy + line.d;
+      });
+    rows = pdfRows(pdfText.filter((w) => under(w, x, y) || inUnit(w)));
+    gt = glyphTextOf(rows);
+    at = charAt(gt, x, y);
+  }
+  return at && { parId: best.parId, gt, index: at.index, after: at.after };
+}
+
+/** PDF text runs as display-list rows, one per run, its width shared evenly by its characters. */
+function pdfRows(ws: readonly PdfWord[]): TextRow[] {
+  return ws.map((w, i) => {
+    const chars = Array.from(w.text);
+    const adv = w.w / Math.max(1, chars.length);
+    const dl = { fonts: { [i]: { id: i, size: w.size } } } as unknown as DisplayList;
+    const items = chars.map((ch, k) => ['g', i, ch.codePointAt(0)!, 0, w.x + k * adv, w.y, adv, 0]) as Line['items'];
+    return { dl, line: { x: w.x, y: w.y, w: w.w, h: 0.75 * w.size, d: 0.25 * w.size, items }, dx: 0, dy: 0 };
+  });
 }

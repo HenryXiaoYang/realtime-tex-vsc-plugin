@@ -38,9 +38,18 @@ export type HostToWebview =
   | { type: 'hint'; text: string }
   | { type: 'reset' };
 
+/** A run of text on a page drawn from the PDF, in sp: left edge, baseline, width, font size. */
+export interface PdfWord {
+  text: string;
+  x: number;
+  y: number;
+  w: number;
+  size: number;
+}
+
 export type WebviewToHost =
   | { type: 'ready' }
-  | { type: 'jump'; page: number; x: number; y: number }
+  | { type: 'jump'; page: number; x: number; y: number; pdfText?: PdfWord[] }
   | { type: 'openLink'; url: string }
   | { type: 'command'; command: string; args?: unknown[] }
   | { type: 'setFollow'; value: boolean }

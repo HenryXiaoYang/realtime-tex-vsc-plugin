@@ -316,7 +316,7 @@ export class PreviewPanel implements vscode.Disposable {
         this.maybeHint();
         break;
       case 'jump': {
-        const ok = await this.session?.jumpToSource(m.page, m.x, m.y);
+        const ok = await this.session?.jumpToSource(m.page, m.x, m.y, m.pdfText);
         if (!ok) vscode.window.setStatusBarMessage('$(info) No source paragraph found at that spot of the preview.', 3000);
         break;
       }

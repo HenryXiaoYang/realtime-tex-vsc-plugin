@@ -9,7 +9,7 @@ import { buildDirFor, debugDir, engineArgs, exportPathFor, processEnv, resolveSe
 import { ShadowText } from './edits';
 import { LiveGutter } from './gutter';
 import type { LiveMark } from './liveMarks';
-import type { Action, ScreenKind } from './messages';
+import type { Action, PdfWord, ScreenKind } from './messages';
 import type {
   Diagnostic as RtexDiagnostic,
   EditResult,
@@ -756,8 +756,8 @@ export class Session implements vscode.Disposable {
 
   /** Open the source at (page, x, y) in the preview: the character clicked when its glyph
    * matches the source, else the unit's row there. */
-  async jumpToSource(page: number, x: number, y: number): Promise<boolean> {
-    const char = clickedChar(this.model, page, x, y);
+  async jumpToSource(page: number, x: number, y: number, pdfText?: PdfWord[]): Promise<boolean> {
+    const char = clickedChar(this.model, page, x, y, Array.isArray(pdfText) ? pdfText : undefined);
     const hit = char ? { parId: char.parId, fraction: char.index / Math.max(1, char.gt.text.length) } : hitTest(this.model.currentPlacements(), page, y);
     if (!hit) return false;
     const open = [this.mainRel, ...[...this.shadows.keys()].filter((f) => f !== this.mainRel)];

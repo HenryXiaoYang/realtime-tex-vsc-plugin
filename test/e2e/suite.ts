@@ -7,7 +7,10 @@ import * as vscode from 'vscode';
 import type { Api } from '../../src/extension';
 import { activeManaged, installedRelease, releaseBinary } from '../../src/config';
 import { installRelease } from '../../src/prebuilt';
+import { pathToFileURL } from 'url';
 import { glyphTextOf, unitRows } from '../../src/glyphMap';
+import { pdfContentBox } from '../../webview/links';
+import { pdfWords } from '../../webview/pdfText';
 import { runTask, sq } from '../../src/setup';
 
 const shots = process.env.RTEX_E2E_OUT ?? '';
@@ -167,6 +170,39 @@ async function steps(): Promise<void> {
   const pdf = await s.exportPdf();
   if (!pdf || !existsSync(pdf)) throw new Error(`export produced no PDF (${pdf})`);
   step(`exported ${path.basename(pdf)}`);
+
+  // a click on a TikZ label, text only the PDF has, lands on the label in the source. The
+  // preview reads the page's PDF text the same way (webview/pdf.ts pdfPageWords).
+  if (s.model.pagesTotal >= 2) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const lib = (await import('pdfjs-dist/legacy/build/pdf.mjs')) as any;
+    lib.GlobalWorkerOptions.workerSrc = pathToFileURL(path.join(ext.extensionPath, 'dist', 'pdf.worker.mjs')).href;
+    const doc = await lib.getDocument({ data: new Uint8Array(readFileSync(pdf)), isEvalSupported: false, disableFontFace: true, verbosity: 0 }).promise;
+    const pu = s.model.pages.get(2)!;
+    const [w, h] = [pu.dl.page_width!, pu.dl.page_height!];
+    const page = await doc.getPage(2);
+    const vp1 = page.getViewport({ scale: 1 });
+    const box = pdfContentBox(w, h, vp1.width / vp1.height);
+    const scale = box ? box.w / vp1.width : Math.min(w / vp1.width, h / vp1.height);
+    const words = pdfWords((await page.getTextContent()).items, page.getViewport({ scale }).transform, scale);
+    await doc.destroy();
+    // the PDF's text sits where the display list draws the same text
+    const fromPdf = words.find((x) => x.text.startsWith('TikZ'));
+    const fromDl = [...unitRows(s.model, 2).values()].map((rows) => glyphTextOf(rows)).find((gt) => gt.text.startsWith('TikZ'))?.glyphs[0];
+    if (!fromPdf || !fromDl || Math.abs(fromPdf.x - fromDl.x) > 65536 || Math.abs(fromPdf.y - fromDl.y) > 65536) {
+      throw new Error(`PDF text at ${JSON.stringify(fromPdf)}, display list at ${JSON.stringify(fromDl && [fromDl.x, fromDl.y])}`);
+    }
+    const label = words.find((x) => x.text.includes('x') && x.y > fromPdf.y + 20 * 65536);
+    if (!label) throw new Error(`no TikZ label in the PDF text: ${JSON.stringify(words.map((x) => x.text))}`);
+    const k = Array.from(label.text).indexOf('x');
+    const adv = label.w / Array.from(label.text).length;
+    if (!(await s.jumpToSource(2, label.x + (k + 0.3) * adv, label.y - label.size * 0.3, words))) throw new Error('jumpToSource failed on the TikZ label');
+    const ed = vscode.window.activeTextEditor!;
+    const got = ed.document.offsetAt(ed.selection.active);
+    const want = ed.document.getText().indexOf('x/2');
+    if (got !== want) throw new Error(`TikZ label click landed at ${JSON.stringify(ed.document.getText().slice(got - 10, got + 10))}, offset ${got}, want ${want}`);
+    step('a click on a TikZ label lands on its source');
+  }
 
   // 7. a full compile that fails after the first layout keeps the pages. RTEX_E2E_SKIP_FAILED_PASS=1
   // skips it: rtex (e5cab6a through b858819) reports the body-only pass after a breaking preamble edit as Ok

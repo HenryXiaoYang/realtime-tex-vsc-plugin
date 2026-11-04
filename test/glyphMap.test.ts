@@ -3,6 +3,7 @@ import { test } from 'node:test';
 import type { DisplayList, Line } from '../src/protocol';
 import { clickedChar, glyphTextOf, sourceOffset, visibleSource } from '../src/glyphMap';
 import { PreviewModel } from '../webview/model';
+import { pdfWords } from '../webview/pdfText';
 
 const PT = 65536;
 const size = 10 * PT;
@@ -116,4 +117,39 @@ test('in a table (one row, several baselines) a click picks the cell under it', 
   assert.equal(at?.gt.text[at.index], 'c');
   const src = 'Apple & banana \\\\\ndelta & echo';
   assert.equal(offsetAt(src, [table], at!.index), src.indexOf('echo') + 1);
+});
+
+test('a click on text only the PDF has (a TikZ label) matches the PDF text', () => {
+  // the picture's row has no glyphs; the PDF has the label "y = x/2" at (40pt, 150pt)
+  const picture: Line = { x: 0, y: 160 * PT, w: 200 * PT, h: 80 * PT, d: 0, items: [['r', 0, 0, 1, 1] as unknown as Line['items'][number]] };
+  const m = new PreviewModel();
+  m.applyLayout({
+    pages: [{ page: 1, exact: false, hash: 1, dl: { ...dl, lines: [picture] } }],
+    pagesTotal: 1,
+    placements: [{ par_id: 9, fragments: [{ page: 1, first_line: 1, last_line: 1, x: 0, xs: [0], baselines: [160 * PT], approximate: false }], lines: 1, kind: 'env' }],
+    keepFromRevision: null,
+  });
+  const words = [
+    { text: 'Above', x: 0, y: 20 * PT, w: 25 * PT, size },
+    // pdf.js splits a formula into runs on one baseline
+    { text: 'y', x: 40 * PT, y: 150 * PT, w: 5 * PT, size },
+    { text: '=', x: 48 * PT, y: 150 * PT, w: 8 * PT, size },
+    { text: 'x/', x: 59 * PT, y: 150 * PT, w: 10 * PT, size },
+    { text: '2', x: 70 * PT, y: 150 * PT, w: 5 * PT, size },
+  ];
+  const at = clickedChar(m, 1, 61 * PT, 148 * PT, words);
+  assert.equal(at?.parId, 9);
+  assert.equal(at?.gt.text, 'y = x/ 2');
+  assert.equal(at?.gt.text[at.index], 'x');
+  const src = '\\begin{tikzpicture}\n  \\draw (0,0) -- (1,1) node[right] {$y = x/2$};\n\\end{tikzpicture}';
+  assert.equal(sourceOffset(at!.gt, at!.index, at!.after, src), src.indexOf('x/2'));
+  // without the PDF text there is nothing to match
+  assert.equal(clickedChar(m, 1, 61 * PT, 148 * PT), undefined);
+});
+
+test('PDF text items are placed in sp by the viewport transform', () => {
+  // a 100×200 PDF page at 2 sp per unit: y flips, the font size scales
+  const vt = [2, 0, 0, -2, 0, 400];
+  const ws = pdfWords([{ str: 'hi', transform: [10, 0, 0, 10, 5, 150], width: 8 }, { str: ' ', transform: [10, 0, 0, 10, 0, 0], width: 1 }, { str: 'up', transform: [0, 10, -10, 0, 5, 5], width: 8 }], vt, 2);
+  assert.deepEqual(ws, [{ text: 'hi', x: 10, y: 100, w: 16, size: 20 }]);
 });

@@ -12,7 +12,7 @@ import {
 } from './links';
 import { cachedPictureMoves, PreviewModel, Rect } from './model';
 import { anchorPosition, BackMouseHandler, captureAnchor, clampScroll, NavigationHistory, scrollChanged } from './navigation';
-import { initPdfWorker, openPdf, PdfDoc, rasterizePdfImage, renderPdfPage } from './pdf';
+import { initPdfWorker, openPdf, PdfDoc, pdfPageWords, rasterizePdfImage, renderPdfPage } from './pdf';
 import { FontStore, ImageStore, inexactReason, Mat, Painter } from './render';
 
 interface VsCodeApi {
@@ -699,17 +699,21 @@ function reveal(page: number, x: number, y: number, force: boolean, remember = f
   }
 }
 
-function jumpFromEvent(e: MouseEvent): void {
+async function jumpFromEvent(e: MouseEvent): Promise<void> {
   const el = (e.target as HTMLElement).closest<HTMLElement>('.page');
   if (!el) return;
   const rect = el.getBoundingClientRect();
   const k = cssScale();
-  post({ type: 'jump', page: Number(el.dataset.page), x: (e.clientX - rect.left) / k, y: (e.clientY - rect.top) / k });
+  const page = Number(el.dataset.page);
+  const [x, y] = [(e.clientX - rect.left) / k, (e.clientY - rect.top) / k];
+  // text the display list lacks (TikZ labels) is only in the PDF the page is drawn from
+  const pdfText = pageDrawMode.get(page) && pdfDoc ? await pdfPageWords(pdfDoc, page, ...pageSizeSp(page)).catch(() => undefined) : undefined;
+  post({ type: 'jump', page, x, y, pdfText });
 }
 pagesEl.addEventListener('dblclick', (e) => {
   if ((e.target as HTMLElement).closest('.pdf-link')) return; // a link opens once, not twice
   window.getSelection()?.removeAllRanges();
-  jumpFromEvent(e);
+  void jumpFromEvent(e);
 });
 pagesEl.addEventListener('click', (e) => {
   const link = (e.target as HTMLElement).closest<HTMLElement>('.pdf-link');
@@ -719,7 +723,7 @@ pagesEl.addEventListener('click', (e) => {
     if (e.detail <= 1) activateLink(link); // a double-click is still one link, not two
     return;
   }
-  if (e.ctrlKey || e.metaKey) jumpFromEvent(e);
+  if (e.ctrlKey || e.metaKey) void jumpFromEvent(e);
 });
 pagesEl.addEventListener('keydown', (e) => {
   if (e.key !== 'Enter' && e.key !== ' ') return;
