@@ -75,6 +75,7 @@ export interface ClickMiss {
 }
 
 type SourceAt = (page: number, x: number, y: number, pdfText?: PdfWord[]) => Promise<{ offset: number; exact: boolean } | undefined>;
+type TargetAt = (offset: number) => Promise<{ page: number; x: number; y: number; size?: number } | undefined>;
 
 /** Where `word` occurs in `gt`, across a hyphenated line break ("inter- nationalization"): the
  * glyph text index of each of its characters, per occurrence. */
@@ -95,7 +96,8 @@ function occurrences(gt: GlyphText, word: string): number[][] {
 }
 
 /**
- * Click every character of every word where the preview shows it (display-list glyphs, else the
+ * Click every character of every word where the preview shows it, and put the source cursor on
+ * every character to check the preview's caret lands on it, (display-list glyphs, else the
  * page's PDF text) and compare the source offset with the word's own: the j-th time a word is
  * shown is its j-th time in the source. Returns the misses and the words not shown as often as
  * the source has them.
@@ -106,15 +108,19 @@ export async function clickEveryWord(
   doc: StressDoc,
   pdfText: Map<number, PdfWord[]>,
   sourceAt: SourceAt,
-): Promise<{ clicks: number; misses: ClickMiss[]; unseen: string[] }> {
+  targetAt: TargetAt,
+): Promise<{ clicks: number; misses: ClickMiss[]; unseen: string[]; carets: number; caretMisses: ClickMiss[] }> {
   const misses: ClickMiss[] = [];
+  const caretMisses: ClickMiss[] = [];
+  let carets = 0;
   const unseen: string[] = [];
   let clicks = 0;
   for (const [word, construct] of doc.words) {
     const inSource: number[] = [];
     for (let k = src.indexOf(word); k >= 0; k = src.indexOf(word, k + 1)) inSource.push(k);
-    // each time the word is shown: [page, x, y] at 30 % of each of its glyphs
-    const shown: [number, number, number][][] = [];
+    // each time the word is shown: [page, x, y] at 30 % of each of its glyphs, and the
+    // character's left edge and baseline (for the caret), or none when only the PDF has it
+    const shown: [number, number, number, number?, number?][][] = [];
     for (let page = 1; page <= model.pagesTotal; page++) {
       const pu = model.pages.get(page)!;
       const units = unitRows(model, page);
@@ -128,7 +134,7 @@ export async function clickEveryWord(
           shown.push(
             occ.map((j) => {
               const g = gt.glyphs.find((g) => g.start <= j && j < g.start + g.text.length)!;
-              return [page, g.x + g.adv * ((j - g.start + 0.3) / g.text.length), g.y - g.size * 0.2];
+              return [page, g.x + g.adv * ((j - g.start + 0.3) / g.text.length), g.y - g.size * 0.2, g.x + (g.adv * (j - g.start)) / g.text.length, g.y];
             }),
           );
         }
@@ -148,7 +154,15 @@ export async function clickEveryWord(
     }
     for (let j = 0; j < shown.length; j++) {
       for (let i = 0; i < word.length; i++) {
-        const [page, x, y] = shown[j][i];
+        const [page, x, y, left, base] = shown[j][i];
+        // the cursor on that character in the source: the preview's caret at its left edge
+        if (left !== undefined && base !== undefined) {
+          carets++;
+          const t = await targetAt(inSource[j] + i);
+          if (!t || t.size === undefined || t.page !== page || Math.abs(t.x - left) > 32768 || Math.abs(t.y - base) > 32768) {
+            caretMisses.push({ word: j ? `${word}#${j + 1}` : word, construct, char: i, got: t ? `${t.size === undefined ? '(row) ' : ''}page ${t.page} (${(t.x / 65536).toFixed(1)}, ${(t.y / 65536).toFixed(1)})pt, want page ${page} (${(left / 65536).toFixed(1)}, ${(base / 65536).toFixed(1)})pt` : 'nothing' });
+          }
+        }
         clicks++;
         const res = await sourceAt(page, x, y, pdfText.get(page));
         if (res?.exact && res.offset === inSource[j] + i) continue;
@@ -156,5 +170,5 @@ export async function clickEveryWord(
       }
     }
   }
-  return { clicks, misses, unseen };
+  return { clicks, misses, unseen, carets, caretMisses };
 }

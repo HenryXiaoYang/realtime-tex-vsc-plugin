@@ -42,7 +42,7 @@ The extension keeps the rtex it installed up to date, the way it was installed: 
 | **Toolbar** | Status pill · zoom − / + · **Fit width** · **Follow cursor** · **Recompile** · **Export PDF** |
 | **Status pill** | **Live · 0.8 ms** means the paragraph was re-typeset that fast. **Updating layout…** means a full compile is placing pages, references and floats. **Up to date** means everything matches. **N errors** opens the Problems panel. |
 | **Live markers** | A bar next to the line numbers shows how each part of your source updates: **solid green** updates live as you type, **dotted amber** waits for the full compile (the preamble, TikZ, …). Hover over a part that went to the full compile to see why. |
-| **Follow cursor** | The preview scrolls to the paragraph you are editing. **Ctrl+Alt+J** jumps there on demand. |
+| **Follow cursor** | The preview scrolls to the paragraph you are editing and shows a caret on the character your cursor is at. **Ctrl+Alt+J** jumps there on demand. |
 | **Links** | Click a link made by `hyperref` (`\href`, `\url`, `\ref`, a table of contents entry, …) to open it or jump within the document. Use the mouse back button to return after an internal jump (up to 50 positions). Links match the displayed layout; a link inside a paragraph you are editing reappears when the full compile catches up. |
 | **Jump to source** | Double-click (or Ctrl/Cmd+click) a word in the preview: the cursor lands on that character in the source. |
 | **Zoom** | Ctrl + mouse wheel, Ctrl + = / − / 0 |

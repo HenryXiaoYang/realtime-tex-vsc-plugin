@@ -128,6 +128,8 @@ async function steps(): Promise<void> {
   editor.selection = new vscode.Selection(pos, pos);
   if (!(await s.revealInPreview(main, pos, true))) throw new Error('revealInPreview failed');
   step('cursor position shown in the preview');
+  await sleep(700);
+  await screenshot('2b-cursor-caret.png');
   const placements = s.placements();
   const [parId, frags] = [...placements].find(([, f]) => f.length > 0)!;
   const f = frags[0];
@@ -274,15 +276,28 @@ async function steps(): Promise<void> {
     const degraded = [...ss.model.pages.values()].filter((p) => !p.exact).map((p) => p.page);
     const stressPdf = degraded.length ? await ss.exportPdf() : undefined;
     const pdfText = stressPdf ? await pdfPagesText(ext.extensionPath, stressPdf, ss.model, degraded) : new Map<number, PdfWord[]>();
-    const { clicks, misses, unseen } = await clickEveryWord(ss.model, stressDocument.getText(), stress, pdfText, (page, x, y, t) => ss.sourceAt(page, x, y, t));
+    const { clicks, misses, unseen, carets, caretMisses } = await clickEveryWord(
+      ss.model,
+      stressDocument.getText(),
+      stress,
+      pdfText,
+      (page, x, y, t) => ss.sourceAt(page, x, y, t),
+      (offset) => ss.previewTargetAt(stressDocument, offset),
+    );
     const byConstruct = new Map<string, number>();
     for (const m of misses) byConstruct.set(m.construct, (byConstruct.get(m.construct) ?? 0) + 1);
     console.log(`[e2e] stress: ${clicks} clicks on ${stress.words.size - unseen.length} words, ${misses.length} misses ${JSON.stringify([...byConstruct])}, unseen ${JSON.stringify(unseen)}`);
     for (const m of misses.slice(0, 60)) console.log(`[e2e]   miss ${m.word}[${m.char}] (${m.construct}): ${m.got}`);
-    if (misses.length || unseen.length) throw new Error(`${misses.length} click(s) missed, ${unseen.length} word(s) not found in the preview`);
+    const caretBy = new Map<string, number>();
+    for (const m of caretMisses) caretBy.set(m.construct, (caretBy.get(m.construct) ?? 0) + 1);
+    console.log(`[e2e] stress carets: ${carets} cursor positions, ${caretMisses.length} misses ${JSON.stringify([...caretBy])}`);
+    for (const m of caretMisses.slice(0, 60)) console.log(`[e2e]   caret miss ${m.word}[${m.char}] (${m.construct}): ${m.got}`);
+    if (misses.length || unseen.length || caretMisses.length) {
+      throw new Error(`${misses.length} click(s) and ${caretMisses.length} caret(s) missed, ${unseen.length} word(s) not found in the preview`);
+    }
     api.panel()!.panel.dispose();
     await waitFor('the engine to stop', () => !ss.running, 10000);
-    step(`every word of the stress document maps back exactly (${clicks} clicks, ${degraded.length} page(s) from the PDF)`);
+    step(`every word of the stress document maps both ways exactly (${clicks} clicks, ${carets} carets, ${degraded.length} page(s) from the PDF)`);
   }
 
   // 9. a document whose first compile fails explains why instead of waiting forever

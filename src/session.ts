@@ -23,7 +23,7 @@ import type {
 } from './protocol';
 import { ExitInfo, RtexProcess } from './rtexProcess';
 import { layoutPdfPath } from './preview/layoutLinks';
-import { clickedChar, matchScore, sourceOffset } from './glyphMap';
+import { caretAt, charAtOffset, clickedChar, glyphTextOf, matchScore, orphanRows, sourceOffset, unitRows } from './glyphMap';
 import { hitTest, PreviewTarget, spanAt, targetInFragments } from './sourceMap';
 import { explainReasons, Phase, SessionStatus } from './status';
 
@@ -737,21 +737,52 @@ export class Session implements vscode.Disposable {
     return files.sort();
   }
 
-  /** Scroll the preview to the text at `pos` in `doc`. */
+  /** Scroll the preview to the text at `pos` in `doc`, and put a caret there when it maps exactly. */
   async revealInPreview(doc: vscode.TextDocument, pos: vscode.Position, force: boolean): Promise<boolean> {
-    const rel = this.relPath(doc);
-    if (!rel || !this.model.hasLayout) return false;
-    const shadow = this.shadows.get(rel) ?? new ShadowText(doc.getText());
-    const byte = shadow.byteOffset(doc.offsetAt(pos));
-    const span = spanAt(await this.spans(rel), byte);
-    if (!span) return false;
-    const frags = this.model.currentPlacements().get(span.id);
-    if (!frags) return false;
-    const len = Math.max(1, span.range.end - span.range.start);
-    const target = targetInFragments(frags, (byte - span.range.start) / len);
+    const target = await this.previewTargetAt(doc, doc.offsetAt(pos));
     if (!target) return false;
     this.outputEmitter.fire({ kind: 'reveal', target, force });
     return true;
+  }
+
+  /** Where the preview shows UTF-16 offset `off` of `doc`: the character there (with `size`)
+   * when it maps exactly, else the unit's row at that fraction of it. */
+  async previewTargetAt(doc: vscode.TextDocument, off: number): Promise<PreviewTarget | undefined> {
+    const rel = this.relPath(doc);
+    if (!rel || !this.model.hasLayout) return undefined;
+    const shadow = this.shadows.get(rel) ?? new ShadowText(doc.getText());
+    const byte = shadow.byteOffset(off);
+    const span = spanAt(await this.spans(rel), byte);
+    if (!span) return undefined;
+    const frags = this.model.currentPlacements().get(span.id);
+    if (!frags) return undefined;
+    const len = Math.max(1, span.range.end - span.range.start);
+    return this.exactTarget(span, shadow, off, frags) ?? targetInFragments(frags, (byte - span.range.start) / len);
+  }
+
+  /** The character of unit `span` showing source offset `off` (UTF-16, in `shadow`), on the
+   * pages it is placed on: the nearest match across them. */
+  private exactTarget(span: Span, shadow: ShadowText, off: number, frags: readonly Fragment[]): PreviewTarget | undefined {
+    const start = shadow.utf16Offset(span.range.start);
+    const src = shadow.text.slice(start, shadow.utf16Offset(span.range.end));
+    let best: { target: PreviewTarget; distance: number } | undefined;
+    const pages = new Set(frags.map((f) => f.page));
+    for (const page of [...pages]) pages.add(page + 1); // its footnote text can run on to the next page
+    for (const page of pages) {
+      const units = unitRows(this.model, page);
+      const own = units.get(span.id);
+      // its own rows, and the lines no unit owns that have its words (its footnotes, margin notes)
+      const groups = [...(own ? [own] : []), ...orphanRows(this.model, page, units).map((r) => [r])];
+      for (const rows of groups) {
+        const gt = glyphTextOf(rows);
+        if (rows !== own && matchScore(gt, src) < 0.5) continue;
+        const char = charAtOffset(gt, src, off - start);
+        // far from any text it shows (deep in a TikZ path): no character to point at
+        const caret = char && char.distance <= 40 && caretAt(gt, char);
+        if (caret && (!best || char.distance < best.distance)) best = { target: { page, ...caret }, distance: char.distance };
+      }
+    }
+    return best?.target;
   }
 
   /** Where in the source the preview point (page, x, y) is: the character clicked when its

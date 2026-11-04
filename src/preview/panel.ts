@@ -191,7 +191,7 @@ export class PreviewPanel implements vscode.Disposable {
         this.enqueueFor(s, (epoch) => this.postFor(s, { type: 'dropOverlays', parIds: o.parIds }, epoch));
         break;
       case 'reveal':
-        this.post({ type: 'reveal', page: o.target.page, x: o.target.x, y: o.target.y, force: o.force });
+        this.post({ type: 'reveal', page: o.target.page, x: o.target.x, y: o.target.y, force: o.force, size: o.target.size });
         break;
       case 'banner':
         this.post({ type: 'banner', text: o.text, kind: o.level, actions: o.actions });

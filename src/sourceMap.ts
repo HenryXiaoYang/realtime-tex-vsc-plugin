@@ -16,6 +16,8 @@ export interface PreviewTarget {
   /** Baseline of the target row, sp from the page top. */
   y: number;
   x: number;
+  /** Font size at the character the target is on, when it is exact (a caret goes there). */
+  size?: number;
 }
 
 function rowCount(frags: readonly Fragment[]): number {
