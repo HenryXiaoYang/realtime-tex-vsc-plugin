@@ -11,6 +11,9 @@ import { pathToFileURL } from 'url';
 import { glyphTextOf, unitRows } from '../../src/glyphMap';
 import { pdfContentBox } from '../../webview/links';
 import { pdfWords } from '../../webview/pdfText';
+import type { PreviewModel } from '../../webview/model';
+import type { PdfWord } from '../../src/messages';
+import { clickEveryWord, stressDoc } from './stress';
 import { runTask, sq } from '../../src/setup';
 
 const shots = process.env.RTEX_E2E_OUT ?? '';
@@ -37,6 +40,26 @@ async function insertAfter(doc: vscode.TextDocument, needle: string, text: strin
   const editor = await vscode.window.showTextDocument(doc, vscode.ViewColumn.One);
   const at = doc.positionAt(doc.getText().indexOf(needle) + needle.length);
   await editor.edit((e) => e.insert(at, text));
+}
+
+/** The PDF text of `pages` of `pdf`, placed as the preview places it (webview/pdf.ts pdfPageWords). */
+async function pdfPagesText(extPath: string, pdf: string, model: PreviewModel, pages: number[]): Promise<Map<number, PdfWord[]>> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const lib = (await import('pdfjs-dist/legacy/build/pdf.mjs')) as any;
+  lib.GlobalWorkerOptions.workerSrc = pathToFileURL(path.join(extPath, 'dist', 'pdf.worker.mjs')).href;
+  const doc = await lib.getDocument({ data: new Uint8Array(readFileSync(pdf)), isEvalSupported: false, disableFontFace: true, verbosity: 0 }).promise;
+  const out = new Map<number, PdfWord[]>();
+  for (const n of pages) {
+    const pu = model.pages.get(n)!;
+    const [w, h] = [pu.dl.page_width!, pu.dl.page_height!];
+    const page = await doc.getPage(n);
+    const vp1 = page.getViewport({ scale: 1 });
+    const box = pdfContentBox(w, h, vp1.width / vp1.height);
+    const scale = box ? box.w / vp1.width : Math.min(w / vp1.width, h / vp1.height);
+    out.set(n, pdfWords((await page.getTextContent()).items, page.getViewport({ scale }).transform, scale));
+  }
+  await doc.destroy();
+  return out;
 }
 
 export async function run(): Promise<void> {
@@ -174,18 +197,7 @@ async function steps(): Promise<void> {
   // a click on a TikZ label, text only the PDF has, lands on the label in the source. The
   // preview reads the page's PDF text the same way (webview/pdf.ts pdfPageWords).
   if (s.model.pagesTotal >= 2) {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const lib = (await import('pdfjs-dist/legacy/build/pdf.mjs')) as any;
-    lib.GlobalWorkerOptions.workerSrc = pathToFileURL(path.join(ext.extensionPath, 'dist', 'pdf.worker.mjs')).href;
-    const doc = await lib.getDocument({ data: new Uint8Array(readFileSync(pdf)), isEvalSupported: false, disableFontFace: true, verbosity: 0 }).promise;
-    const pu = s.model.pages.get(2)!;
-    const [w, h] = [pu.dl.page_width!, pu.dl.page_height!];
-    const page = await doc.getPage(2);
-    const vp1 = page.getViewport({ scale: 1 });
-    const box = pdfContentBox(w, h, vp1.width / vp1.height);
-    const scale = box ? box.w / vp1.width : Math.min(w / vp1.width, h / vp1.height);
-    const words = pdfWords((await page.getTextContent()).items, page.getViewport({ scale }).transform, scale);
-    await doc.destroy();
+    const words = (await pdfPagesText(ext.extensionPath, pdf, s.model, [2])).get(2)!;
     // the PDF's text sits where the display list draws the same text
     const fromPdf = words.find((x) => x.text.startsWith('TikZ'));
     const fromDl = [...unitRows(s.model, 2).values()].map((rows) => glyphTextOf(rows)).find((gt) => gt.text.startsWith('TikZ'))?.glyphs[0];
@@ -245,6 +257,33 @@ async function steps(): Promise<void> {
   api.panel()!.panel.dispose();
   await waitFor('the wrapper to go', () => !sp.running && !existsSync(wrapper), 10000);
   step('wrapper removed when the preview closed');
+
+  // 8c. every word of a document of hard constructs (tables, TikZ, floats, footnotes, math,
+  // minipages, verbatim, …): a click on each character lands on that character in the source
+  {
+    const stress = stressDoc();
+    const file = path.join(folder, 'stress', 'stress.tex');
+    await vscode.workspace.fs.writeFile(vscode.Uri.file(file), Buffer.from(stress.tex));
+    const stressDocument = await vscode.workspace.openTextDocument(file);
+    await vscode.window.showTextDocument(stressDocument, vscode.ViewColumn.One);
+    await vscode.commands.executeCommand('realtimeTex.previewFile');
+    await waitFor('a session for the stress document', () => api.session()?.mainFile === file, 10000);
+    const ss = api.session()!;
+    await waitFor('its first layout', () => ss.status.phase === 'live' && ss.model.hasLayout, 120000);
+    await waitFor('the layout to settle', () => ss.status.convergence?.state === 'Converged' && !ss.status.pending, 120000);
+    const degraded = [...ss.model.pages.values()].filter((p) => !p.exact).map((p) => p.page);
+    const stressPdf = degraded.length ? await ss.exportPdf() : undefined;
+    const pdfText = stressPdf ? await pdfPagesText(ext.extensionPath, stressPdf, ss.model, degraded) : new Map<number, PdfWord[]>();
+    const { clicks, misses, unseen } = await clickEveryWord(ss.model, stressDocument.getText(), stress, pdfText, (page, x, y, t) => ss.sourceAt(page, x, y, t));
+    const byConstruct = new Map<string, number>();
+    for (const m of misses) byConstruct.set(m.construct, (byConstruct.get(m.construct) ?? 0) + 1);
+    console.log(`[e2e] stress: ${clicks} clicks on ${stress.words.size - unseen.length} words, ${misses.length} misses ${JSON.stringify([...byConstruct])}, unseen ${JSON.stringify(unseen)}`);
+    for (const m of misses.slice(0, 60)) console.log(`[e2e]   miss ${m.word}[${m.char}] (${m.construct}): ${m.got}`);
+    if (misses.length || unseen.length) throw new Error(`${misses.length} click(s) missed, ${unseen.length} word(s) not found in the preview`);
+    api.panel()!.panel.dispose();
+    await waitFor('the engine to stop', () => !ss.running, 10000);
+    step(`every word of the stress document maps back exactly (${clicks} clicks, ${degraded.length} page(s) from the PDF)`);
+  }
 
   // 9. a document whose first compile fails explains why instead of waiting forever
   const broken = path.join(folder, 'broken.tex');

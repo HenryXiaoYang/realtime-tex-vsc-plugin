@@ -193,11 +193,49 @@ export function sourceOffset(gt: GlyphText, index: number, after: boolean, src: 
     b1 = b0 + width;
   }
   const match = align(gt.text, vis.text, a0, a1, b0, b1);
+  // The alignment's ties can put a letter on the same letter in nearby markup (a TikZ option, a
+  // coordinate, a key). The clicked word as a whole settles them: where it occurs in the source,
+  // take the occurrence the alignment points at, else the one nearest it.
+  let ws = index;
+  let we = index;
+  while (ws > 0 && gt.text[ws - 1] !== ' ') ws--;
+  while (we < n && gt.text[we] !== ' ') we++;
+  const word = foldText(gt.text.slice(ws, we));
+  const near = match[index] >= 0 ? match[index] - (index - ws) : nearestMatch(match, index, a0, a1);
+  let occ = -1;
+  if (word.trim()) {
+    for (let k = vis.text.indexOf(word); k >= 0; k = vis.text.indexOf(word, k + 1)) {
+      if (occ < 0 || (near !== undefined && Math.abs(k - near) < Math.abs(occ - near))) occ = k;
+    }
+  }
+  if (occ >= 0) return after ? vis.end[occ + index - ws] : vis.start[occ + index - ws];
   if (match[index] >= 0) return after ? vis.end[match[index]] : vis.start[match[index]];
   // printed by a macro: just after the matched text before it, else just before the text after it
   for (let k = index - 1; k >= a0; k--) if (match[k] >= 0) return vis.end[match[k]];
   for (let k = index + 1; k < a1; k++) if (match[k] >= 0) return vis.start[match[k]];
   return undefined;
+}
+
+/** The source index the alignment gives the matched character nearest `index`, shifted to `index`. */
+function nearestMatch(match: Int32Array, index: number, a0: number, a1: number): number | undefined {
+  for (let d = 1; index - d >= a0 || index + d < a1; d++) {
+    if (index - d >= a0 && match[index - d] >= 0) return match[index - d] + d;
+    if (index + d < a1 && match[index + d] >= 0) return match[index + d] - d;
+  }
+  return undefined;
+}
+
+/** Glyph text as the visible source spells it (see `fold`). */
+export function foldText(s: string): string {
+  return Array.from(s, fold).join('');
+}
+
+/** How much of `gt`'s text `src` has: the share of its words (3 characters or more) found in the
+ * visible source. Tells which unit text the page builder moved away (a footnote) comes from. */
+export function matchScore(gt: GlyphText, src: string): number {
+  const vis = visibleSource(src).text;
+  const words = foldText(gt.text).split(' ').filter((w) => w.length >= 3);
+  return words.length ? words.filter((w) => vis.includes(w)).length / words.length : 0;
 }
 
 /** The rows of each unit on `page` as the preview draws them: a unit's live rows where it has
@@ -216,23 +254,37 @@ export function unitRows(model: PreviewModel, page: number): Map<number, TextRow
 }
 
 /** The unit and character under a click at (page, x, y), in sp, as the preview draws the page:
- * a unit's live rows where it has them, else its rows in the last layout. */
+ * a unit's live rows where it has them, else its rows in the last layout. A page line no unit
+ * owns (footnote text, which the page builder moved) may come from any unit:
+ * `parIds` then lists them all, for the caller to pick by `matchScore`. */
 export function clickedChar(
   model: PreviewModel,
   page: number,
   x: number,
   y: number,
   pdfText?: readonly PdfWord[],
-): { parId: number; gt: GlyphText; index: number; after: boolean } | undefined {
+): { parIds: number[]; gt: GlyphText; index: number; after: boolean } | undefined {
   const units = unitRows(model, page);
+  const groups: { parIds: number[]; rows: TextRow[] }[] = [...units].map(([parId, rows]) => ({ parIds: [parId], rows }));
+  const pu = model.pages.get(page);
+  if (pu) {
+    const owned = new Set(model.hiddenLines(page));
+    for (const parId of units.keys()) for (const i of model.ownLines(page, parId)) owned.add(i);
+    // its unit can be on another page (the mark's paragraph on the page before): every unit, nearest page first
+    const dist = (frags: readonly { page: number }[]) => Math.min(...frags.map((f) => Math.abs(f.page - page)));
+    const everyUnit = [...model.placements].sort((a, b) => dist(a[1]) - dist(b[1])).map(([id]) => id);
+    pu.dl.lines.forEach((line, i) => {
+      if (!owned.has(i)) groups.push({ parIds: everyUnit, rows: [{ dl: pu.dl, line, dx: 0, dy: 0 }] });
+    });
+  }
   // nearest row above or below the click, and of those (two columns) the nearest across
-  let best: { parId: number; rows: TextRow[]; v: number; h: number } | undefined;
-  for (const [parId, rows] of units) {
+  let best: { parIds: number[]; rows: TextRow[]; v: number; h: number } | undefined;
+  for (const { parIds, rows } of groups) {
     for (const { line, dx, dy } of rows) {
       const [l, r, t, b] = [line.x + dx, line.x + dx + line.w, line.y + dy - line.h, line.y + dy + line.d];
       const v = Math.max(t - y, 0, y - b);
       const h = Math.max(l - x, 0, x - r);
-      if (!best || v < best.v || (v === best.v && h < best.h)) best = { parId, rows, v, h };
+      if (!best || v < best.v || (v === best.v && h < best.h)) best = { parIds, rows, v, h };
     }
   }
   // farther than about two lines from any text: not a click on this unit
@@ -256,7 +308,7 @@ export function clickedChar(
     gt = glyphTextOf(rows);
     at = charAt(gt, x, y);
   }
-  return at && { parId: best.parId, gt, index: at.index, after: at.after };
+  return at && { parIds: best.parIds, gt, index: at.index, after: at.after };
 }
 
 /** PDF text runs as display-list rows, one per run, its width shared evenly by its characters. */

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import type { DisplayList, Line } from '../src/protocol';
-import { clickedChar, glyphTextOf, sourceOffset, visibleSource } from '../src/glyphMap';
+import { clickedChar, glyphTextOf, matchScore, sourceOffset, visibleSource } from '../src/glyphMap';
 import { PreviewModel } from '../webview/model';
 import { pdfWords } from '../webview/pdfText';
 
@@ -88,7 +88,7 @@ function clickedAt(ls: Line[], x: number, y: number) {
 test('a click picks the row under it and the glyph under it', () => {
   const ls = [line('abc def', 100), line('ghi', 112)];
   const second = clickedAt(ls, 6 * PT, 111 * PT);
-  assert.equal(second?.parId, 7);
+  assert.deepEqual(second?.parIds, [7]);
   assert.equal(second?.gt.text[second.index], 'h');
   // past the end of a row: its last character, caret after it
   const end = clickedAt(ls, 80 * PT, 100 * PT);
@@ -138,7 +138,7 @@ test('a click on text only the PDF has (a TikZ label) matches the PDF text', () 
     { text: '2', x: 70 * PT, y: 150 * PT, w: 5 * PT, size },
   ];
   const at = clickedChar(m, 1, 61 * PT, 148 * PT, words);
-  assert.equal(at?.parId, 9);
+  assert.deepEqual(at?.parIds, [9]);
   assert.equal(at?.gt.text, 'y = x/ 2');
   assert.equal(at?.gt.text[at.index], 'x');
   const src = '\\begin{tikzpicture}\n  \\draw (0,0) -- (1,1) node[right] {$y = x/2$};\n\\end{tikzpicture}';
@@ -152,4 +152,42 @@ test('PDF text items are placed in sp by the viewport transform', () => {
   const vt = [2, 0, 0, -2, 0, 400];
   const ws = pdfWords([{ str: 'hi', transform: [10, 0, 0, 10, 5, 150], width: 8 }, { str: ' ', transform: [10, 0, 0, 10, 0, 0], width: 1 }, { str: 'up', transform: [0, 10, -10, 0, 5, 5], width: 8 }], vt, 2);
   assert.deepEqual(ws, [{ text: 'hi', x: 10, y: 100, w: 16, size: 20 }]);
+});
+
+test('the clicked word settles ties with the same letters in nearby markup', () => {
+  // the alignment alone may put the last n of "zqdn" on the n of "node"
+  const src = '\\node at (0,0) {zqdm zqdn};\n\\draw (1,0) -- (3,0) node[right] {zqdo};';
+  const ls = [line('zqdm zqdn zqdo', 100)];
+  const gt = glyphTextOf(rows(...ls));
+  for (let i = 0; i < gt.text.length; i++) {
+    if (gt.text[i] === ' ') continue;
+    const word = gt.text.slice(gt.text.lastIndexOf(' ', i) + 1).split(' ')[0];
+    const inWord = i - gt.text.lastIndexOf(' ', i) - 1;
+    assert.equal(offsetAt(src, ls, i), src.indexOf(word) + inWord, `char ${i}`);
+  }
+  // a repeated word: the occurrence the alignment points at
+  const rep = 'aa \\textbf{bb} aa \\emph{bb} aa';
+  const rl = [line('aa bb aa bb aa', 100)];
+  assert.equal(offsetAt(rep, rl, 9), rep.lastIndexOf('bb'));
+  assert.equal(offsetAt(rep, rl, 12), rep.lastIndexOf('aa'));
+});
+
+test('a page line no unit owns (footnote text) may come from any unit', () => {
+  const m = new PreviewModel();
+  const body = line('body text', 100);
+  const foot = line('1 Footnote words', 700);
+  m.applyLayout({
+    pages: [{ page: 1, exact: true, hash: 1, dl: { ...dl, lines: [body, foot] } }],
+    pagesTotal: 1,
+    placements: [
+      { par_id: 3, fragments: [{ page: 1, first_line: 1, last_line: 1, x: 0, xs: [0], baselines: [100 * PT], approximate: false }], lines: 1, kind: 'par' },
+      { par_id: 4, fragments: [{ page: 2, first_line: 1, last_line: 1, x: 0, xs: [0], baselines: [100 * PT], approximate: false }], lines: 1, kind: 'par' },
+    ],
+    keepFromRevision: null,
+  });
+  const at = clickedChar(m, 1, 20 * PT, 700 * PT);
+  assert.deepEqual(at?.parIds, [3, 4]);
+  assert.equal(at?.gt.text, '1 Footnote words');
+  assert.equal(matchScore(at!.gt, 'Text\\footnote{Footnote words.} more'), 1);
+  assert.equal(matchScore(at!.gt, 'Other text'), 0);
 });

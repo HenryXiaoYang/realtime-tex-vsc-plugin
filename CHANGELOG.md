@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- Jump to source is exact: double-clicking (or Ctrl/Cmd+clicking) a word in the preview puts the cursor on that character in the source, not at the start of the paragraph's line. Text printed by a macro (`\ref`, `\cite`, `\today`) puts it just after the text before the macro. On pages drawn from the PDF, text the display list does not have, such as TikZ labels, is matched with the PDF's own text. A first step toward editing in the preview (#11).
+- Jump to source is exact: double-clicking (or Ctrl/Cmd+clicking) a word in the preview puts the cursor on that character in the source, not at the start of the paragraph's line. Text printed by a macro (`\ref`, `\cite`, `\today`) puts it just after the text before the macro. On pages drawn from the PDF, text the display list does not have, such as TikZ labels, is matched with the PDF's own text. Footnote text maps to the `\footnote` it comes from, in tables the cell under the pointer counts, and the E2E suite checks every character of a document of tables, TikZ, floats, footnotes, lists, math, minipages, multicolumn text, margin notes, hyphenated and repeated words. A first step toward editing in the preview (#11).
 
 ## 0.0.4
 

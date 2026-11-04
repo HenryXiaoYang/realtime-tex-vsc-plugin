@@ -23,7 +23,7 @@ import type {
 } from './protocol';
 import { ExitInfo, RtexProcess } from './rtexProcess';
 import { layoutPdfPath } from './preview/layoutLinks';
-import { clickedChar, sourceOffset } from './glyphMap';
+import { clickedChar, matchScore, sourceOffset } from './glyphMap';
 import { hitTest, PreviewTarget, spanAt, targetInFragments } from './sourceMap';
 import { explainReasons, Phase, SessionStatus } from './status';
 
@@ -754,42 +754,61 @@ export class Session implements vscode.Disposable {
     return true;
   }
 
-  /** Open the source at (page, x, y) in the preview: the character clicked when its glyph
-   * matches the source, else the unit's row there. */
-  async jumpToSource(page: number, x: number, y: number, pdfText?: PdfWord[]): Promise<boolean> {
+  /** Where in the source the preview point (page, x, y) is: the character clicked when its
+   * glyph matches the source (`exact`), else the start of the unit's row there. */
+  async sourceAt(
+    page: number,
+    x: number,
+    y: number,
+    pdfText?: PdfWord[],
+  ): Promise<{ doc: vscode.TextDocument; offset: number; unit: [number, number]; exact: boolean } | undefined> {
     const char = clickedChar(this.model, page, x, y, Array.isArray(pdfText) ? pdfText : undefined);
-    const hit = char ? { parId: char.parId, fraction: char.index / Math.max(1, char.gt.text.length) } : hitTest(this.model.currentPlacements(), page, y);
-    if (!hit) return false;
+    const rough = char ? undefined : hitTest(this.model.currentPlacements(), page, y);
+    const parIds = char?.parIds ?? (rough ? [rough.parId] : []);
     const open = [this.mainRel, ...[...this.shadows.keys()].filter((f) => f !== this.mainRel)];
     // The unit may come from a file that no editor has open, e.g. an \include'd chapter: the
     // engine has the spans of every project file, so try the remaining .tex files too.
     const files = [...open, ...(await this.projectTexFiles()).filter((f) => !open.includes(f))];
-    for (const rel of files) {
-      const span = (await this.spans(rel)).find((s) => s.id === hit.parId);
-      if (!span) continue;
-      const uri = vscode.Uri.file(path.join(this.projectRoot, rel));
-      const doc = await vscode.workspace.openTextDocument(uri);
-      const shadow = this.shadows.get(rel) ?? new ShadowText(doc.getText());
-      const startOff = shadow.utf16Offset(span.range.start);
-      const endOff = shadow.utf16Offset(span.range.end);
-      const exact = char && sourceOffset(char.gt, char.index, char.after, shadow.text.slice(startOff, endOff));
-      const visibleEditor = vscode.window.visibleTextEditors.find((e) => e.document.uri.fsPath === uri.fsPath);
-      const editor = await vscode.window.showTextDocument(doc, {
-        viewColumn: visibleEditor?.viewColumn ?? vscode.ViewColumn.One,
-        preserveFocus: false,
-      });
-      let pos: vscode.Position;
-      if (exact !== undefined) pos = doc.positionAt(startOff + exact);
-      else {
-        pos = doc.positionAt(shadow.utf16Offset(span.range.start + Math.floor(hit.fraction * (span.range.end - span.range.start))));
-        pos = new vscode.Position(pos.line, doc.lineAt(pos.line).firstNonWhitespaceCharacterIndex);
+    const found: { rel: string; span: Span; src: string; shadow: ShadowText }[] = [];
+    for (const parId of parIds) {
+      for (const rel of files) {
+        const span = (await this.spans(rel)).find((s) => s.id === parId);
+        if (!span) continue;
+        const text = this.shadows.get(rel)?.text ?? (await vscode.workspace.openTextDocument(vscode.Uri.file(path.join(this.projectRoot, rel)))).getText();
+        const shadow = this.shadows.get(rel) ?? new ShadowText(text);
+        found.push({ rel, span, shadow, src: shadow.text.slice(shadow.utf16Offset(span.range.start), shadow.utf16Offset(span.range.end)) });
+        break;
       }
-      editor.selection = new vscode.Selection(pos, pos);
-      editor.revealRange(new vscode.Range(pos, pos), vscode.TextEditorRevealType.InCenterIfOutsideViewport);
-      flashRange(editor, new vscode.Range(doc.positionAt(startOff), doc.positionAt(endOff)));
-      return true;
     }
-    return false;
+    // text no unit owns (a footnote): the unit whose source has most of its words
+    let pick: (typeof found)[number] | undefined = found[0];
+    if (char && found.length > 1) {
+      const [top] = found.map((f) => ({ f, score: matchScore(char.gt, f.src) })).sort((a, b) => b.score - a.score);
+      pick = top.score >= 0.5 ? top.f : undefined;
+    }
+    if (!pick) return undefined;
+    const { rel, span, shadow } = pick;
+    const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(path.join(this.projectRoot, rel)));
+    const unit: [number, number] = [shadow.utf16Offset(span.range.start), shadow.utf16Offset(span.range.end)];
+    const exact = char && sourceOffset(char.gt, char.index, char.after, pick.src);
+    if (exact !== undefined) return { doc, offset: unit[0] + exact, unit, exact: true };
+    const fraction = char ? char.index / Math.max(1, char.gt.text.length) : (rough?.fraction ?? 0);
+    const pos = doc.positionAt(shadow.utf16Offset(span.range.start + Math.floor(fraction * (span.range.end - span.range.start))));
+    return { doc, offset: doc.offsetAt(new vscode.Position(pos.line, doc.lineAt(pos.line).firstNonWhitespaceCharacterIndex)), unit, exact: false };
+  }
+
+  /** Put the cursor at the source of the preview point (page, x, y) (see `sourceAt`). */
+  async jumpToSource(page: number, x: number, y: number, pdfText?: PdfWord[]): Promise<boolean> {
+    const at = await this.sourceAt(page, x, y, pdfText);
+    if (!at) return false;
+    const { doc } = at;
+    const visibleEditor = vscode.window.visibleTextEditors.find((e) => e.document.uri.fsPath === doc.uri.fsPath);
+    const editor = await vscode.window.showTextDocument(doc, { viewColumn: visibleEditor?.viewColumn ?? vscode.ViewColumn.One, preserveFocus: false });
+    const pos = doc.positionAt(at.offset);
+    editor.selection = new vscode.Selection(pos, pos);
+    editor.revealRange(new vscode.Range(pos, pos), vscode.TextEditorRevealType.InCenterIfOutsideViewport);
+    flashRange(editor, new vscode.Range(doc.positionAt(at.unit[0]), doc.positionAt(at.unit[1])));
+    return true;
   }
 
   /** The gutter marks of `doc` (for tests). */
