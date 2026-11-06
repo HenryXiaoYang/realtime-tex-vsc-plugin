@@ -163,7 +163,10 @@ async function steps(): Promise<void> {
     if (!(await s.jumpToSource(where.page, where.x, where.y))) throw new Error(`jumpToSource failed on "${word}"`);
     const ed = vscode.window.activeTextEditor!;
     const text = ed.document.getText();
-    const want = text.indexOf(before + word) + before.length + 1;
+    // the fixture is checked out with CRLF on Windows
+    const b = ed.document.eol === vscode.EndOfLine.CRLF ? before.replace(/\n/g, '\r\n') : before;
+    if (!text.includes(b + word)) throw new Error(`no ${JSON.stringify(b + word)} in the source`);
+    const want = text.indexOf(b + word) + b.length + 1;
     const got = ed.document.offsetAt(ed.selection.active);
     if (got !== want) throw new Error(`click on "${word}" landed at ${JSON.stringify(text.slice(got - 10, got))}|${JSON.stringify(text.slice(got, got + 10))}, want offset ${want}, got ${got}`);
   }
