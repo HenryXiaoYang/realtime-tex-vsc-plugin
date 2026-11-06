@@ -409,19 +409,21 @@ async function renderPage(n: number): Promise<void> {
   const [wSp, hSp] = pageSizeSp(n);
   const w = Math.max(1, Math.round(wSp * k * dpr));
   const h = Math.max(1, Math.round(hSp * k * dpr));
-  // draw off-screen, then swap: no flicker while a PDF page renders
-  const canvas = document.createElement('canvas');
-  canvas.width = w;
-  canvas.height = h;
-  const ctx = canvas.getContext('2d')!;
-  ctx.fillStyle = '#fff';
-  ctx.fillRect(0, 0, w, h);
-  const base: Mat = [k * dpr, 0, 0, k * dpr, 0, 0];
-
   const hidden = model.hiddenLines(n);
   const lines = pu.dl.lines.filter((_, i) => !hidden.has(i));
   const reason = pu.exact ? inexactReason(pu.dl, fonts, images, lines) : 'contains material the live renderer cannot draw (e.g. TikZ)';
   const usePdf = reason !== undefined && pdfDoc !== undefined && n <= pdfPages;
+  // a PDF page renders asynchronously: draw it off-screen, then swap, so it does not flicker.
+  // A display list draws in this task, so it reuses the page's canvas (a fresh one per
+  // keystroke costs a full-page allocation)
+  const old = el.querySelector('canvas')!;
+  const canvas = !usePdf && old.width === w && old.height === h ? old : document.createElement('canvas');
+  if (canvas !== old) [canvas.width, canvas.height] = [w, h];
+  const ctx = canvas.getContext('2d')!;
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(0, 0, w, h);
+  const base: Mat = [k * dpr, 0, 0, k * dpr, 0, 0];
   const doc = pdfDoc;
   const drawDisplayList = () => {
     const p = new Painter(ctx, base, fonts, images);
@@ -476,10 +478,9 @@ async function renderPage(n: number): Promise<void> {
     for (const r of rows) painters[i].draw(overlay.dl, r.line.items, r.dx, r.dy);
   });
   if (renderToken.get(n) !== token) return;
-  const old = el.querySelector('canvas')!;
   canvas.style.width = el.style.width;
   canvas.style.height = el.style.height;
-  el.replaceChild(canvas, old);
+  if (canvas !== old) el.replaceChild(canvas, el.querySelector('canvas')!);
   const pageRows = lines.map((line) => ({ dl: pu.dl, line, dx: 0, dy: 0 }));
   const liveRows = overlays.flatMap(({ overlay, rows }) => rows.map((r) => ({ dl: overlay.dl, line: r.line, dx: r.dx, dy: r.dy })));
   renderTextLayer(el.querySelector<HTMLElement>('.text-layer')!, words(readingOrder(pageRows, liveRows)), k);
