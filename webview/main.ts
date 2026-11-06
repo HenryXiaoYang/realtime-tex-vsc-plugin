@@ -237,7 +237,7 @@ const observer = new IntersectionObserver(
     for (const e of entries) {
       const n = Number((e.target as HTMLElement).dataset.page);
       if (e.isIntersecting) visible.add(n);
-      else visible.delete(n);
+      else if (visible.delete(n)) releasePage(n);
       linkOverlay.setVisible(n, e.isIntersecting);
     }
     scheduleRender();
@@ -306,6 +306,18 @@ function layoutPages(): void {
   zoomLabel.textContent = zoom === 'fitWidth' ? `${zoomPercent()} %` : `${zoom} %`;
   $<HTMLButtonElement>('fit').classList.toggle('active', zoom === 'fitWidth');
   scheduleRender();
+}
+
+/** A page far from the viewport gives up its canvas pixels and text layer (a few MB and a few
+ * hundred nodes each, which add up over a long document) and is drawn again when it comes back. */
+function releasePage(n: number): void {
+  const el = pageEl(n);
+  if (!el) return;
+  renderToken.set(n, (renderToken.get(n) ?? 0) + 1); // a draw in flight must not swap its canvas in
+  const canvas = el.querySelector('canvas')!;
+  canvas.width = canvas.height = 0;
+  el.querySelector('.text-layer')!.replaceChildren();
+  dirty.add(n);
 }
 
 function markDirty(pages: Iterable<number>): void {
