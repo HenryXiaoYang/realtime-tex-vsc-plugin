@@ -15,7 +15,8 @@ export interface ByteEdit {
   text: string;
 }
 
-const BLOCK = 4096;
+// small enough that mapping every span of a long file (the gutter, after each pause in typing) scans little
+const BLOCK = 256;
 
 /** UTF-8 length of `s[from, to)` counted per UTF-16 unit (a surrogate unit counts 2 bytes, so a
  * pair counts 4 and the count is additive across any split point). */
