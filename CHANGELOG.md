@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- A live update draws into the page's canvas instead of a new one: the redraw after a keystroke takes about one frame instead of two (16 ms instead of 31 ms from the update to the drawn page, 300-page book at a 2x display).
 - Long documents scroll without running out of memory: pages more than a screen away from the view give their canvas and text layer back and are drawn again when they come near. Before, every page scrolled past kept its canvas, about 17 MB each at a 2x display, and the preview of a 300-page book grew past 10 GB.
 - A full compile redraws only the pages it changed. Before, every page on screen was drawn again after each compile, about 75 ms of work per compile at a 2x display (now 17 ms when no page changed).
 - The editor's cursor shows in the preview: a blinking caret on the character it is at, including in tables, footnotes and margin notes, and it follows as you move or type. Ctrl+Alt+J scrolls there as before. Text only the PDF has (TikZ labels) gets no caret; the preview scrolls to its paragraph instead.
