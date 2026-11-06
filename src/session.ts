@@ -389,6 +389,8 @@ export class Session implements vscode.Disposable {
     }
     if (r.reply !== 'edit' && r.reply !== 'set_document') return;
     const res: EditResult = r.result;
+    // the text matched what rtex already had (e.g. a file opened by a jump): it schedules no pass
+    if (res.reasons.length === 1 && res.reasons[0] === 'unchanged') return;
     // errors are found by full compiles, which fast edits do not start: while the Problems
     // panel lists some, recompile shortly after typing stops so fixed ones disappear
     if ((this.diags.get('background') ?? []).some((d) => d.severity === 'error')) {
