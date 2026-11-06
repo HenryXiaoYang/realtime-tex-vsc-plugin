@@ -293,8 +293,13 @@ function layoutPages(): void {
   for (let i = 0; i < model.pagesTotal; i++) {
     const el = pagesEl.children.item(i) as HTMLElement;
     const [w, h] = pageSizeSp(i + 1);
-    el.style.width = `${Math.round(w * k)}px`;
-    el.style.height = `${Math.round(h * k)}px`;
+    const [width, height] = [`${Math.round(w * k)}px`, `${Math.round(h * k)}px`];
+    // a page whose size and content are unchanged keeps its canvas: a layout redraws only the
+    // pages it changed (markDirty), not every page on screen
+    if (el.style.width === width && el.style.height === height && el.dataset.scale === String(k)) continue;
+    el.style.width = width;
+    el.style.height = height;
+    el.dataset.scale = String(k);
     dirty.add(i + 1);
   }
   if (caretAt) showCaret(...caretAt); // a new zoom moves it
