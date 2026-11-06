@@ -6,7 +6,7 @@ import * as https from 'https';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import { installedRelease, releaseBinary, releasesDir, setActiveManaged } from './config';
-import { assetName, assetUrl, RELEASES_API, releaseTarget, sha256For } from './release';
+import { assetName, assetUrl, latestWithAsset, RELEASES_API, releaseTarget, sha256For } from './release';
 
 const UA = { 'User-Agent': 'realtime-tex-vscode' };
 
@@ -38,15 +38,19 @@ async function getText(url: string, headers: Record<string, string> = UA): Promi
   return Buffer.concat(chunks).toString('utf8');
 }
 
-/** The tag of the latest realtime-tex release. The API is rate-limited without a token, so the
- * redirect of github.com/…/releases/latest is the fallback. */
+/** The tag of the latest realtime-tex release that has this machine's archive. The API is
+ * rate-limited without a token, so the redirect of github.com/…/releases/latest is the fallback. */
 export async function latestReleaseTag(): Promise<string> {
   try {
-    const tag = JSON.parse(await getText(RELEASES_API, { ...UA, Accept: 'application/vnd.github+json' })).tag_name;
-    if (typeof tag === 'string' && tag) return tag;
+    const target = releaseTarget(process.platform, process.arch);
+    const releases = JSON.parse(await getText(RELEASES_API, { ...UA, Accept: 'application/vnd.github+json' }));
+    const tag = latestWithAsset(releases, target && assetName(target));
+    if (tag) return tag;
   } catch {
     /* fall back below */
   }
+  // shortcut: the redirect can't show assets, so in the minutes before release.yml uploads them
+  // this tag 404s on download; fine while the API path above is the usual one.
   return new Promise((resolve, reject) => {
     const req = https.request('https://github.com/HenryXiaoYang/realtime-tex/releases/latest', { method: 'HEAD', headers: UA, timeout: 30000 }, (res) => {
       res.resume();

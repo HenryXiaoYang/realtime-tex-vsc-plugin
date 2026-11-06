@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { assetName, assetUrl, isNewer, parseVersion, releaseTarget, sha256For } from '../src/release';
+import { assetName, assetUrl, isNewer, latestWithAsset, parseVersion, releaseTarget, sha256For } from '../src/release';
 
 test('each supported machine maps to its release archive', () => {
   assert.equal(assetName(releaseTarget('linux', 'x64')!), 'rtex-x86_64-unknown-linux-gnu.tar.gz');
@@ -39,4 +39,21 @@ test('checksums are read from .sha256 files and SHA256SUMS', () => {
   assert.equal(sha256For(`${other}  a.tar.gz\n`, 'b.tar.gz'), undefined);
   assert.equal(sha256For(`${h}\n`, 'anything'), h);
   assert.equal(sha256For('not a checksum', 'a'), undefined);
+});
+
+test('the latest release is the newest one with this machine\'s archive and checksum', () => {
+  const name = 'rtex-x86_64-pc-windows-msvc.zip';
+  const rel = (tag: string, assets: string[], extra = {}) => ({ tag_name: tag, draft: false, prerelease: false, assets: assets.map((n) => ({ name: n })), ...extra });
+  const releases = [
+    rel('v0.0.9', [name, `${name}.sha256`], { draft: true }),
+    rel('v0.0.8', [name, `${name}.sha256`], { prerelease: true }),
+    rel('v0.0.7', ['rtex-x86_64-unknown-linux-gnu.tar.gz', 'rtex-x86_64-unknown-linux-gnu.tar.gz.sha256']), // still uploading
+    rel('v0.0.6', [name]), // no checksum
+    rel('v0.0.5', [name, `${name}.sha256`]),
+  ];
+  assert.equal(latestWithAsset(releases, name), 'v0.0.5');
+  assert.equal(latestWithAsset(releases, 'rtex-x86_64-unknown-linux-gnu.tar.gz'), 'v0.0.7');
+  assert.equal(latestWithAsset(releases, undefined), 'v0.0.7');
+  assert.equal(latestWithAsset({ message: 'API rate limit exceeded' }, name), undefined);
+  assert.equal(latestWithAsset([], name), undefined);
 });

@@ -2,6 +2,7 @@
 
 ## 0.0.5
 
+- **Install rtex** and **Update rtex Engine** no longer fail with HTTP 404 in the minutes after an engine release is published, while its archives are still being built: they take the newest release that already has this machine's archive and checksum.
 - A live update draws into the page's canvas instead of a new one: the redraw after a keystroke takes about one frame instead of two (16 ms instead of 31 ms from the update to the drawn page, 300-page book at a 2x display).
 - Long documents scroll without running out of memory: pages more than a screen away from the view give their canvas and text layer back and are drawn again when they come near. Before, every page scrolled past kept its canvas, about 17 MB each at a 2x display, and the preview of a 300-page book grew past 10 GB.
 - A full compile redraws only the pages it changed. Before, every page on screen was drawn again after each compile, about 75 ms of work per compile at a 2x display (now 17 ms when no page changed).
