@@ -156,15 +156,26 @@ export function align(a: string, b: string, a0 = 0, a1 = a.length, b0 = 0, b1 = 
   if (n <= 0 || m <= 0) return out;
   const w = m + 1;
   const dp = new Uint16Array((n + 1) * w);
-  const fa = Array.from(a.slice(a0, a1), fold);
+  // character codes, not one-character strings: the table fill is the hot loop (n·m cells)
+  const fa = new Uint16Array(n);
+  for (let i = 0; i < n; i++) fa[i] = fold(a[a0 + i]).charCodeAt(0);
+  const fb = new Uint16Array(m);
+  for (let j = 0; j < m; j++) fb[j] = b.charCodeAt(b0 + j);
   for (let i = 1; i <= n; i++) {
     const ca = fa[i - 1];
+    const row = i * w;
+    const up = row - w;
     for (let j = 1; j <= m; j++) {
-      dp[i * w + j] = ca === b[b0 + j - 1] ? dp[(i - 1) * w + j - 1] + 1 : Math.max(dp[(i - 1) * w + j], dp[i * w + j - 1]);
+      if (ca === fb[j - 1]) dp[row + j] = dp[up + j - 1] + 1;
+      else {
+        const u = dp[up + j];
+        const l = dp[row + j - 1];
+        dp[row + j] = u > l ? u : l;
+      }
     }
   }
   for (let i = n, j = m; i > 0 && j > 0; ) {
-    if (fa[i - 1] === b[b0 + j - 1] && dp[i * w + j] === dp[(i - 1) * w + j - 1] + 1) {
+    if (fa[i - 1] === fb[j - 1] && dp[i * w + j] === dp[(i - 1) * w + j - 1] + 1) {
       out[a0 + i - 1] = b0 + j - 1;
       i--;
       j--;
