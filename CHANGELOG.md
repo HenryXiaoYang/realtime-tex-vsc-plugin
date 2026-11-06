@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.0.5
 
 - A live update draws into the page's canvas instead of a new one: the redraw after a keystroke takes about one frame instead of two (16 ms instead of 31 ms from the update to the drawn page, 300-page book at a 2x display).
 - Long documents scroll without running out of memory: pages more than a screen away from the view give their canvas and text layer back and are drawn again when they come near. Before, every page scrolled past kept its canvas, about 17 MB each at a 2x display, and the preview of a 300-page book grew past 10 GB.
