@@ -1,7 +1,7 @@
 // Prebuilt rtex from realtime-tex's GitHub releases: which archive fits this machine, and the
 // version and checksum arithmetic around it. Pure module.
 
-export const RELEASES_API = 'https://api.github.com/repos/HenryXiaoYang/realtime-tex/releases/latest';
+export const RELEASES_API = 'https://api.github.com/repos/HenryXiaoYang/realtime-tex/releases?per_page=10';
 export const RELEASE_DOWNLOAD = 'https://github.com/HenryXiaoYang/realtime-tex/releases/download';
 
 export interface ReleaseTarget {
@@ -57,6 +57,19 @@ export function sha256For(text: string, file: string): string | undefined {
   for (const l of lines) {
     const m = /^([0-9a-fA-F]{64})(?:\s+\*?(.+))?$/.exec(l);
     if (m && (m[2] === undefined ? lines.length === 1 : m[2].trim() === file)) return m[1].toLowerCase();
+  }
+  return undefined;
+}
+
+/** The newest published release in a GitHub `/releases` listing that has `asset` and its
+ * `.sha256` attached. release.yml uploads the archives some minutes after a release is
+ * published; until then the release before it is the latest one this machine can install. */
+export function latestWithAsset(releases: unknown, asset: string | undefined): string | undefined {
+  if (!Array.isArray(releases)) return undefined;
+  for (const r of releases) {
+    if (!r || r.draft || r.prerelease || typeof r.tag_name !== 'string' || !r.tag_name) continue;
+    const names = new Set(Array.isArray(r.assets) ? r.assets.map((a: { name?: unknown }) => a?.name) : []);
+    if (!asset || (names.has(asset) && names.has(`${asset}.sha256`))) return r.tag_name;
   }
   return undefined;
 }
