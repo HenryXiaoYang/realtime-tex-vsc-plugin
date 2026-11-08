@@ -35,7 +35,7 @@ export type HostToWebview =
   | { type: 'resources'; fonts: [string, FontResource][]; images: [string, ImageResource][] }
   /** `size`: the target is the exact character, of that font size; the preview puts a caret there. */
   | { type: 'reveal'; page: number; x: number; y: number; force: boolean; size?: number }
-  | { type: 'config'; follow: boolean; invert: boolean; zoom?: string }
+  | { type: 'config'; follow: boolean; invert: boolean; zoom?: string; main?: string }
   | { type: 'hint'; text: string }
   | { type: 'reset' };
 

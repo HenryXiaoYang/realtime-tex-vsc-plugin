@@ -23,6 +23,8 @@ interface VsCodeApi {
 interface SavedState {
   zoom: string;
   scrollTop?: number;
+  /** Main file the panel shows, so VS Code restores each panel to its own document. */
+  main?: string;
 }
 interface Boot {
   workerUrl: string;
@@ -170,7 +172,7 @@ function zoomPercent(): number {
 function setZoom(z: string): void {
   const anchor = scrollAnchor();
   zoom = z;
-  vscode.setState({ zoom });
+  vscode.setState({ ...vscode.getState(), zoom });
   layoutPages();
   restoreAnchor(anchor);
 }
@@ -824,6 +826,7 @@ function applyConfig(m: Extract<HostToWebview, { type: 'config' }>): void {
   setFollowUi(m.follow);
   document.body.classList.toggle('invert', m.invert);
   if (m.zoom && !saved?.zoom) setZoom(m.zoom);
+  if (m.main !== undefined) vscode.setState({ zoom, ...vscode.getState(), main: m.main || undefined });
 }
 applyConfig({ type: 'config', follow: boot.follow, invert: boot.invert });
 

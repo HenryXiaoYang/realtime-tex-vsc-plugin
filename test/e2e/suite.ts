@@ -239,6 +239,37 @@ async function steps(): Promise<void> {
     step('recovered after the preamble was fixed');
   }
 
+  // 7b. a second main file gets its own preview and engine; the first one keeps running (#22)
+  {
+    const otherFile = path.join(folder, 'other.tex');
+    await vscode.workspace.fs.writeFile(vscode.Uri.file(otherFile), Buffer.from('\\documentclass{article}\n\\begin{document}\nAnother document, previewed beside the first.\n\\end{document}\n'));
+    const otherDoc = await vscode.workspace.openTextDocument(otherFile);
+    await vscode.window.showTextDocument(otherDoc, vscode.ViewColumn.One);
+    const firstPanel = api.panel()!;
+    await vscode.commands.executeCommand('realtimeTex.openPreview');
+    await waitFor('a session for other.tex', () => api.session()?.mainFile === otherFile, 10000);
+    const so = api.session()!;
+    const otherPanel = api.panel()!;
+    if (otherPanel === firstPanel) throw new Error('other.tex replaced the first preview');
+    await waitFor('its first layout', () => so.status.phase === 'live' && so.model.hasLayout, 120000);
+    await waitFor('its layout to settle', () => so.status.convergence?.state === 'Converged' && !so.status.pending, 120000);
+    if (!s.running || firstPanel.attached !== s) throw new Error('the first preview lost its engine');
+    await insertAfter(otherDoc, 'Another document', ' typed');
+    await waitFor('a fast update in other.tex', () => so.status.lastFastMs !== undefined, 30000);
+    // the main file of another preview is not part of this one
+    if ((s as unknown as { shadows: Map<string, { text: string }> }).shadows.get('other.tex')?.text.includes(' typed')) throw new Error('main.tex got the edits of other.tex');
+    step(`two previews side by side, fast update in the second in ${so.status.lastFastMs!.toFixed(2)} ms`);
+    await sleep(800);
+    await screenshot('4c-two-previews.png');
+    otherPanel.panel.dispose();
+    await waitFor('the second engine to stop', () => !so.running, 10000);
+    if (!s.running) throw new Error('closing the second preview stopped the first');
+    await vscode.window.showTextDocument(main, vscode.ViewColumn.One);
+    // a second main file in the folder would change which main file the next steps find
+    await vscode.workspace.fs.delete(vscode.Uri.file(otherFile));
+    step('closing one preview leaves the other running');
+  }
+
   // 8. closing the preview stops the engine
   api.panel()!.panel.dispose();
   await waitFor('the engine to stop', () => !s.running, 10000);
