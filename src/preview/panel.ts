@@ -304,6 +304,8 @@ export class PreviewPanel implements vscode.Disposable {
       type: 'config',
       follow: cfg().get<boolean>('syncCursor', true),
       invert: cfg().get<boolean>('preview.invertInDarkTheme', false),
+      // a wrapper is gone once its session ends: '' clears it, and the panel reopens the last main file
+      main: this.session && !this.session.preview ? this.session.mainFile : '',
     });
   }
 

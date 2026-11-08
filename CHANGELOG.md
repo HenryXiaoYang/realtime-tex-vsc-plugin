@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Several documents can be previewed at once: opening the preview of another main file opens a second preview tab with its own engine instead of replacing the first, so switching between them needs no recompile. Commands (Export PDF, Recompile, the status bar) act on the preview of the active editor's document, or on the focused preview. Closing a preview stops only its engine, and VS Code restores each preview to its own document. Suggested by @emberrolland (#22).
+
 ## 0.0.5
 
 - **Install rtex** and **Update rtex Engine** no longer fail with HTTP 404 in the minutes after an engine release is published, while its archives are still being built: they take the newest release that already has this machine's archive and checksum.
