@@ -3,6 +3,7 @@
 ## Unreleased
 
 - Several documents can be previewed at once: opening the preview of another main file opens a second preview tab with its own engine instead of replacing the first, so switching between them needs no recompile. Commands (Export PDF, Recompile, the status bar) act on the preview of the active editor's document, or on the focused preview. Closing a preview stops only its engine, and VS Code restores each preview to its own document. Suggested by @emberrolland (#22).
+- Jumping from the preview into a file no editor had open no longer leaves the status saying "A full compile is running because unchanged": rtex schedules no compile when the text it gets is the same as what it has. Thanks to @Steve-Li-1998 (#27, #28).
 
 ## 0.0.5
 
