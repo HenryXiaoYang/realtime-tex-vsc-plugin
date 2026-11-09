@@ -65,7 +65,9 @@ button.active {
 .toolbar {
   position: fixed;
   inset: 0 0 auto 0;
-  min-height: var(--toolbar-h);
+  /* not var(--toolbar-h): fitToolbar stores the measured height there, and a wrapped toolbar
+     would then never fit one row again (#30) */
+  min-height: 36px;
   display: flex;
   flex-wrap: wrap;
   align-items: center;

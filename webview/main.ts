@@ -122,9 +122,6 @@ const linkOverlay = new LinkOverlay(
 const toolbar = document.querySelector<HTMLElement>('.toolbar')!;
 function fitToolbar(): void {
   toolbar.classList.remove('compact', 'tiny');
-  // --toolbar-h is also the toolbar's min-height: measure without the last fit's height, or a
-  // toolbar that once wrapped (a very narrow panel) stays that tall and never fits one row again
-  document.documentElement.style.removeProperty('--toolbar-h');
   const oneRow = () => toolbar.scrollHeight <= 44;
   if (!oneRow()) toolbar.classList.add('compact');
   if (!oneRow()) toolbar.classList.add('tiny');
