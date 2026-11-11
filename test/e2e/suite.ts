@@ -246,15 +246,22 @@ async function steps(): Promise<void> {
     const otherDoc = await vscode.workspace.openTextDocument(otherFile);
     await vscode.window.showTextDocument(otherDoc, vscode.ViewColumn.One);
     const firstPanel = api.panel()!;
+    // this one opens to the left of its source (#32)
+    const settings = vscode.workspace.getConfiguration('realtimeTex');
+    await settings.update('preview.editorGroup', 'left', vscode.ConfigurationTarget.Global);
     await vscode.commands.executeCommand('realtimeTex.openPreview');
     await waitFor('a session for other.tex', () => api.session()?.mainFile === otherFile, 10000);
     const so = api.session()!;
     const otherPanel = api.panel()!;
     if (otherPanel === firstPanel) throw new Error('other.tex replaced the first preview');
+    await waitFor('the preview left of other.tex', () => otherPanel.panel.viewColumn === 1 && vscode.window.activeTextEditor?.document === otherDoc && vscode.window.activeTextEditor.viewColumn === 2, 10000);
+    await settings.update('preview.editorGroup', undefined, vscode.ConfigurationTarget.Global);
+    step('preview.editorGroup "left" opens the preview left of its source, focus stays in the source');
     await waitFor('its first layout', () => so.status.phase === 'live' && so.model.hasLayout, 120000);
     await waitFor('its layout to settle', () => so.status.convergence?.state === 'Converged' && !so.status.pending, 120000);
     if (!s.running || firstPanel.attached !== s) throw new Error('the first preview lost its engine');
-    await insertAfter(otherDoc, 'Another document', ' typed');
+    // in the source's own group: insertAfter's column One now holds the preview
+    await vscode.window.activeTextEditor!.edit((e) => e.insert(otherDoc.positionAt(otherDoc.getText().indexOf('Another document') + 'Another document'.length), ' typed'));
     await waitFor('a fast update in other.tex', () => so.status.lastFastMs !== undefined, 30000);
     // the main file of another preview is not part of this one
     if ((s as unknown as { shadows: Map<string, { text: string }> }).shadows.get('other.tex')?.text.includes(' typed')) throw new Error('main.tex got the edits of other.tex');

@@ -45,7 +45,10 @@
         "command": "realtimeTex.openPreview",
         "title": "Open Live Preview to the Side",
         "category": "Realtime TeX",
-        "icon": "$(open-preview)"
+        "icon": {
+          "light": "media/preview-light.svg",
+          "dark": "media/preview-dark.svg"
+        }
       },
       {
         "command": "realtimeTex.openPreviewHere",
@@ -378,6 +381,23 @@
           ],
           "default": "fitWidth",
           "markdownDescription": "Initial zoom of the preview."
+        },
+        "realtimeTex.preview.editorGroup": {
+          "type": "string",
+          "enum": [
+            "right",
+            "left",
+            "above",
+            "below"
+          ],
+          "enumDescriptions": [
+            "In the editor group to the right of the source",
+            "In the editor group to the left of the source",
+            "In the editor group above the source",
+            "In the editor group below the source"
+          ],
+          "default": "right",
+          "markdownDescription": "Where **Open Live Preview to the Side** opens the preview. A new editor group is made when there is none on that side. **Open Live Preview** always opens it in the current group."
         },
         "realtimeTex.stopWhenPreviewCloses": {
           "type": "boolean",

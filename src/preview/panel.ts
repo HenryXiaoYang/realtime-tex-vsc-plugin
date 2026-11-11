@@ -15,6 +15,13 @@ import { captureSnapshot, LayoutLinkController, readCompletePdf, SerialQueue, ty
 
 export const VIEW_TYPE = 'realtimeTex.preview';
 
+/** realtimeTex.preview.editorGroup → [move the active editor there, focus back the source]. */
+const MOVE_TO: Record<string, [string, string] | undefined> = {
+  left: ['workbench.action.moveEditorToLeftGroup', 'workbench.action.focusRightGroup'],
+  above: ['workbench.action.moveEditorToAboveGroup', 'workbench.action.focusBelowGroup'],
+  below: ['workbench.action.moveEditorToBelowGroup', 'workbench.action.focusAboveGroup'],
+};
+
 export interface PanelHost {
   log: vscode.OutputChannel;
   resources(session: Session): ResourceLoader;
@@ -39,12 +46,21 @@ export class PreviewPanel implements vscode.Disposable {
   private disposed = false;
 
   static create(ctx: vscode.ExtensionContext, host: PanelHost, column: vscode.ViewColumn, preserveFocus: boolean): PreviewPanel {
+    // "to the side" honours realtimeTex.preview.editorGroup; VS Code has no column left of
+    // the first one, so the panel opens in the active group and is moved there
+    const move = column === vscode.ViewColumn.Beside ? MOVE_TO[cfg().get<string>('preview.editorGroup', 'right')] : undefined;
     const panel = vscode.window.createWebviewPanel(
       VIEW_TYPE,
       'Live Preview',
-      { viewColumn: column, preserveFocus },
+      move ? { viewColumn: vscode.ViewColumn.Active, preserveFocus: false } : { viewColumn: column, preserveFocus },
       { enableScripts: true, retainContextWhenHidden: true, localResourceRoots: [vscode.Uri.joinPath(ctx.extensionUri, 'dist'), vscode.Uri.joinPath(ctx.extensionUri, 'media')] },
     );
+    if (move) {
+      void (async () => {
+        await vscode.commands.executeCommand(move[0]);
+        if (preserveFocus) await vscode.commands.executeCommand(move[1]);
+      })();
+    }
     return new PreviewPanel(ctx, host, panel);
   }
 
