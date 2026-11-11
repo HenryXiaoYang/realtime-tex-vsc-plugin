@@ -22,7 +22,7 @@
 <img src="https://raw.githubusercontent.com/HenryXiaoYang/realtime-tex-vsc-plugin/main/docs/marketplace.png" alt="VS Code 扩展视图中的 Realtime TeX 及其安装按钮" width="362">
 
 1. 打开一个 LaTeX 项目文件夹。支持 Linux、macOS 和 Windows。
-2. 打开一个 `.tex` 文件，点击编辑器标题栏上的**预览图标**，或按 **Ctrl+Alt+V**（Mac 上为 **Cmd+Alt+V**）。
+2. 打开一个 `.tex` 文件，点击编辑器标题栏上的**预览图标**（带黄色闪电的页面），或按 **Ctrl+Alt+V**（Mac 上为 **Cmd+Alt+V**）。
 3. 开始输入。
 
 首次使用时，预览会引导你补齐缺少的部分：
@@ -112,6 +112,7 @@ fontspec 默认的 node 模式也能用，但每次按键会更慢一些。
 | `realtimeTex.autoStart` | `false` | 打开 LaTeX 文件时即启动引擎，不必等打开预览。 |
 | `realtimeTex.stopWhenPreviewCloses` | `true` | 关闭预览时停止引擎。 |
 | `realtimeTex.preview.zoom` | `fitWidth` | 初始缩放。 |
+| `realtimeTex.preview.editorGroup` | `right` | 预览打开在源文件的哪一侧：`right`、`left`、`above` 或 `below`。 |
 | `realtimeTex.preview.invertInDarkTheme` | `false` | 在深色主题下以深色显示页面。 |
 
 ## 命令

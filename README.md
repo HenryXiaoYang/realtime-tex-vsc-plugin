@@ -23,7 +23,7 @@ Install **Realtime TeX** from the [VS Code Marketplace](https://marketplace.visu
 <img src="https://raw.githubusercontent.com/HenryXiaoYang/realtime-tex-vsc-plugin/main/docs/marketplace.png" alt="Realtime TeX in the Extensions view of VS Code, with its Install button" width="362">
 
 1. Open a folder with a LaTeX project. Linux, macOS and Windows are supported.
-2. Open a `.tex` file and click the **preview icon** in the editor title bar, or press **Ctrl+Alt+V** (**Cmd+Alt+V** on Mac).
+2. Open a `.tex` file and click the **preview icon** (a page with a yellow lightning bolt) in the editor title bar, or press **Ctrl+Alt+V** (**Cmd+Alt+V** on Mac).
 3. Start typing.
 
 On first use, the preview walks you through anything that is missing:
@@ -121,6 +121,7 @@ live on top.
 | `realtimeTex.autoStart` | `false` | Start the engine when a LaTeX file opens, without waiting for the preview. |
 | `realtimeTex.stopWhenPreviewCloses` | `true` | Stop the engine when the preview closes. |
 | `realtimeTex.preview.zoom` | `fitWidth` | Initial zoom. |
+| `realtimeTex.preview.editorGroup` | `right` | Side the preview opens on: `right`, `left`, `above` or `below` the source. |
 | `realtimeTex.preview.invertInDarkTheme` | `false` | Dark pages in dark themes. |
 
 ## Commands
