@@ -172,7 +172,7 @@ export class PreviewModel {
 }
 
 /** Place a unit's rows at a layout's placement rows (the algorithm of rtex layout.rs
- * `fragments`): rows are positioned relative to the first placement row of each page; rows
+ * `fragments`): rows are positioned relative to the first placement row of each page column; rows
  * beyond the placement continue on its last page. */
 export function reanchor(placed: readonly Fragment[], rows: readonly Line[]): Fragment[] {
   const pl: { page: number; x: number; y: number }[] = [];
@@ -187,7 +187,8 @@ export function reanchor(placed: readonly Fragment[], rows: readonly Line[]): Fr
     const first = i;
     const xs: number[] = [];
     const baselines: number[] = [];
-    while (i < pl.length && pl[i].page === page && i < rows.length) {
+    // a placement above the previous one starts a new column (two-column pages)
+    while (i < pl.length && pl[i].page === page && (i === first || pl[i].y > pl[i - 1].y) && i < rows.length) {
       xs.push(anchor.x + (rows[i].x - ax));
       baselines.push(anchor.y + (rows[i].y - ay));
       i++;
