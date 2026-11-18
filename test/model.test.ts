@@ -65,6 +65,16 @@ test('reanchor extends rows past the placement on its last page', () => {
   assert.equal(f[0].approximate, true);
 });
 
+test('reanchor anchors each column of a two-column page at its own placement', () => {
+  const rows = [line(10, 0), line(0, 12), line(0, 24)];
+  const f = reanchor([frag(1, [58], [695]), frag(1, [318, 318], [435, 447], 2)], rows);
+  assert.equal(f.length, 2);
+  assert.deepEqual([f[0].first_line, f[0].last_line, f[0].xs[0], f[0].baselines[0]], [1, 1, 58 * U, 695 * U]);
+  assert.deepEqual([f[1].first_line, f[1].last_line], [2, 3]);
+  assert.deepEqual(f[1].xs, [318 * U, 318 * U]);
+  assert.deepEqual(f[1].baselines, [435 * U, 447 * U]);
+});
+
 test('source map lookups', () => {
   const spans = [
     { id: 1, range: { start: 0, end: 50 }, kind: 'Preamble' as const, hash: 0, last_revision: 0 },
