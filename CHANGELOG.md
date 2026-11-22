@@ -1,7 +1,8 @@
 # Changelog
 
-## Unreleased
+## 0.0.6
 
+- Math copied from the preview reads as the symbols it shows: `\to` copies as →, `\in` as ∈, Greek letters and `\leftarrow` as themselves, instead of `!`, `2` or nothing. The text layer reads glyph names from TeX's glyph lists. Thanks to @dfshfghj (#19, #36).
 - Two-column documents: a live edit to a paragraph that runs from one column into the next stays where the column puts it after the next layout arrives. Before, its rows in the second column were redrawn under the first column. Needs rtex 0.0.8 for the edit to be shown live at all (engine issue #47, reported by @Asianfleet).
 - The preview can open to the left of the source (or above or below it): set `realtimeTex.preview.editorGroup`, like LaTeX Workshop's `latex-workshop.view.pdf.tab.editorGroup`. The editor title bar button now shows the preview's own icon, a page with a yellow lightning bolt, so it no longer looks like LaTeX Workshop's View LaTeX PDF button. Suggested by @pasiooooo (#32).
 - Several documents can be previewed at once: opening the preview of another main file opens a second preview tab with its own engine instead of replacing the first, so switching between them needs no recompile. Commands (Export PDF, Recompile, the status bar) act on the preview of the active editor's document, or on the focused preview. Closing a preview stops only its engine, and VS Code restores each preview to its own document. Suggested by @emberrolland (#22).
