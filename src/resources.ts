@@ -84,7 +84,7 @@ export class ResourceLoader {
   }
 
   private glyphList(): Promise<GlyphList> {
-    this.glyphs ??= loadGlyphList(this.env);
+    this.glyphs ??= loadGlyphList((file) => this.kpsewhich(file));
     return this.glyphs;
   }
 

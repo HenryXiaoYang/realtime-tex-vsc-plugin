@@ -11,6 +11,9 @@ fi;FB01
 f_f_i;0066 0066 0069
 Omega;2126,03A9
 broken;
+zerooldstyle;F730
+lscript;2113
+acute;00B4
 `;
 
 test('glyph list: one name per line, hex code points', () => {
@@ -33,4 +36,11 @@ test('glyph list: a broken entry is skipped, not fatal', () => {
   assert.equal(list.has('broken'), false);
   assert.equal(parseGlyphList('').size, 0);
   assert.equal(parseGlyphList('no separator here').size, 0);
+});
+
+test('glyph list: private-use values are dropped, other glyphs keep their form', () => {
+  const list = parseGlyphList(SAMPLE);
+  assert.equal(list.has('zerooldstyle'), false);
+  assert.equal(list.get('lscript'), 'ℓ');
+  assert.equal(list.get('acute'), '´');
 });
