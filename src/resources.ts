@@ -5,9 +5,11 @@ import { promises as fs } from 'fs';
 import * as path from 'path';
 import { fontKey, FontResource, ImageResource } from './fontKey';
 import type { DisplayList, FontDesc } from './protocol';
+import { loadGlyphList, type GlyphList } from './glyphlist';
 import { MapEntry, parseEncFile, parseMapFile, type1Outlines } from './type1';
 
 export class ResourceLoader {
+  private glyphs?: Promise<GlyphList>;
   private kpseCache = new Map<string, Promise<string | undefined>>();
   private mapFile: Promise<Map<string, MapEntry>> | undefined;
   private fonts = new Map<string, Promise<FontResource>>();
@@ -81,14 +83,25 @@ export class ResourceLoader {
     return this.loadType1(file, entry);
   }
 
+  private glyphList(): Promise<GlyphList> {
+    this.glyphs ??= loadGlyphList(this.env);
+    return this.glyphs;
+  }
+
   private async loadType1(file: string, entry: MapEntry | undefined): Promise<FontResource> {
     let encoding: string[] | undefined;
     if (entry?.encFile) {
       const encPath = await this.locate(entry.encFile);
       if (encPath) encoding = parseEncFile(await fs.readFile(encPath, 'latin1'));
     }
-    const { upem, glyphs } = type1Outlines(new Uint8Array(await fs.readFile(file)), encoding);
-    return { kind: 'type1', upem, glyphs, slant: entry?.slant, extend: entry?.extend };
+    const { upem, glyphs, names } = type1Outlines(new Uint8Array(await fs.readFile(file)), encoding);
+    const list = await this.glyphList();
+    const text: Record<number, string> = {};
+    for (const [code, name] of Object.entries(names)) {
+      const value = list.get(name);
+      if (value) text[Number(code)] = value;
+    }
+    return { kind: 'type1', upem, glyphs, text, slant: entry?.slant, extend: entry?.extend };
   }
 
   private async image(file: string, projectRoot: string): Promise<ImageResource> {

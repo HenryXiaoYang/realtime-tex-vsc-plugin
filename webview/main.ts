@@ -485,7 +485,14 @@ async function renderPage(n: number): Promise<void> {
   if (canvas !== old) el.replaceChild(canvas, el.querySelector('canvas')!);
   const pageRows = lines.map((line) => ({ dl: pu.dl, line, dx: 0, dy: 0 }));
   const liveRows = overlays.flatMap(({ overlay, rows }) => rows.map((r) => ({ dl: overlay.dl, line: r.line, dx: r.dx, dy: r.dy })));
-  renderTextLayer(el.querySelector<HTMLElement>('.text-layer')!, words(readingOrder(pageRows, liveRows)), k);
+  renderTextLayer(
+    el.querySelector<HTMLElement>('.text-layer')!,
+    words(readingOrder(pageRows, liveRows), (dl, font, char) => {
+      const desc = dl.fonts[String(font)];
+      return desc ? fonts.textOf(desc, char) : undefined;
+    }),
+    k,
+  );
   const badge = el.querySelector<HTMLElement>('.badge')!;
   if (usePdf && !pdfFailed) {
     badge.hidden = false;

@@ -51,7 +51,15 @@ function rgb(r: number, g: number, b: number): string | undefined {
 
 type LoadedFont =
   | { kind: 'sfnt'; upem: number; font: opentype.Font; paths: Map<number, Path2D | null> }
-  | { kind: 'type1'; upem: number; src: Record<number, string>; paths: Map<number, Path2D | null>; slant?: number; extend?: number }
+  | {
+      kind: 'type1';
+      upem: number;
+      src: Record<number, string>;
+      text?: Record<number, string>;
+      paths: Map<number, Path2D | null>;
+      slant?: number;
+      extend?: number;
+    }
   | { kind: 'missing'; reason: string };
 
 export class FontStore {
@@ -71,7 +79,15 @@ export class FontStore {
         this.fonts.set(key, { kind: 'missing', reason: `cannot parse font: ${(e as Error).message}` });
       }
     } else if (res.kind === 'type1') {
-      this.fonts.set(key, { kind: 'type1', upem: res.upem, src: res.glyphs, paths: new Map(), slant: res.slant, extend: res.extend });
+      this.fonts.set(key, {
+        kind: 'type1',
+        upem: res.upem,
+        src: res.glyphs,
+        text: res.text,
+        paths: new Map(),
+        slant: res.slant,
+        extend: res.extend,
+      });
     } else {
       this.fonts.set(key, res);
     }
@@ -79,6 +95,11 @@ export class FontStore {
 
   get(desc: FontDesc): LoadedFont | undefined {
     return this.fonts.get(fontKey(desc));
+  }
+
+  textOf(desc: FontDesc, char: number): string | undefined {
+    const found = this.fonts.get(fontKey(desc));
+    return found?.kind === 'type1' ? found.text?.[char] : undefined;
   }
 
   /** Outline of a glyph in font units (y up), or null when the font lacks it. */

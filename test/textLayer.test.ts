@@ -42,6 +42,31 @@ test('glyph text: TFM ligature slots, Unicode ligatures, private-use variants', 
   assert.equal(glyphText(0x4e2d, 5), '中');
 });
 
+test('a Type 1 slot takes the text the Host read from the glyph list', () => {
+  assert.equal(glyphText(33, null), '!');
+  assert.equal(glyphText(33, null, '→'), '→');
+  assert.equal(glyphText(33, null, '∈'), '∈');
+  assert.equal(glyphText(97, null, undefined), 'a');
+  assert.equal(glyphText(11, null, undefined), 'ff');
+});
+
+test('words use the glyph names the font supplies', () => {
+  const cmsy = {
+    fonts: { '1': { id: 1, size, filename: 'cmsy10.pfb', name: 'cmsy10' } },
+  } as unknown as DisplayList;
+  const row = {
+    dl: cmsy,
+    line: { x: 0, y: 100 * PT, w: 20 * PT, h: 7 * PT, d: 2 * PT, items: [['g', 1, 33, null, 0, 100 * PT, 5 * PT, 0]] } as Line,
+    dx: 0,
+    dy: 0,
+  };
+  const text: Record<number, string> = { 33: '→' };
+  const textOf = (dl: DisplayList, font: number, char: number) =>
+    dl === cmsy && font === 1 ? text[char] : undefined;
+  assert.deepEqual(words([row]).map((w) => w.text), ['!']);
+  assert.deepEqual(words([row], textOf).map((w) => w.text), ['→']);
+});
+
 test('live rows take the place of the lines they replace', () => {
   const a = { dl, line: line('a', 100 * PT), dx: 0, dy: 0 };
   const c = { dl, line: line('c', 124 * PT), dx: 0, dy: 0 };
