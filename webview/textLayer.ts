@@ -27,10 +27,14 @@ const TFM_CHARS: Record<number, string> = {
   16: '“', 17: '”', 21: '–', 22: '—', 34: '”', 92: '“', 96: '‘', 39: '’', 123: '–', 124: '—',
 };
 
+export type GlyphTextOf = (dl: DisplayList, font: number, char: number) => string | undefined;
+
 /** The text of glyph `char`: TFM fonts (no glyph index) number their slots by encoding, OpenType
- * fonts by Unicode; private-use codes (unnamed variants) give nothing. */
-export function glyphText(char: number, index: unknown): string {
+ * fonts by Unicode; private-use codes (unnamed variants) give nothing. `text` is what the Host read
+ * from the glyph list for a Type 1 slot, and wins over the slot table. */
+export function glyphText(char: number, index: unknown, text?: string): string {
   if (index === null || index === undefined) {
+    if (text) return text;
     if (char in TFM_CHARS) return TFM_CHARS[char];
     return char > 32 && char < 127 ? String.fromCharCode(char) : '';
   }
@@ -53,7 +57,7 @@ export interface RowGlyph {
 
 /** The glyphs of `rows` that have text, in order: a gap wider than a sixth of the font size is a
  * space. */
-export function rowGlyphs(rows: readonly TextRow[]): RowGlyph[] {
+export function rowGlyphs(rows: readonly TextRow[], textOf?: GlyphTextOf): RowGlyph[] {
   const out: RowGlyph[] = [];
   rows.forEach(({ dl, line, dx, dy }, row) => {
     let prev: RowGlyph | undefined;
@@ -61,7 +65,7 @@ export function rowGlyphs(rows: readonly TextRow[]): RowGlyph[] {
     for (const it of line.items as Item[]) {
       if (it[0] !== 'g') continue;
       const [, font, char, index, gx, gy, adv] = it as [string, number, number, number | null, number, number, number];
-      const text = glyphText(char, index);
+      const text = glyphText(char, index, textOf?.(dl, font, char));
       if (!text) continue;
       const size = dl.fonts[String(font)]?.size ?? 655360;
       const x = gx + dx;
@@ -80,7 +84,7 @@ export function rowGlyphs(rows: readonly TextRow[]): RowGlyph[] {
 
 /** Words of `rows`, in their order: glyphs on one baseline join into a word until a gap wider
  * than a sixth of the font size, which becomes a space. */
-export function words(rows: readonly TextRow[]): Word[] {
+export function words(rows: readonly TextRow[], textOf?: GlyphTextOf): Word[] {
   const out: Word[] = [];
   let cur: Word | undefined;
   let row = -1;
@@ -88,7 +92,7 @@ export function words(rows: readonly TextRow[]): Word[] {
     if (cur) out.push(cur);
     cur = undefined;
   };
-  for (const g of rowGlyphs(rows)) {
+  for (const g of rowGlyphs(rows, textOf)) {
     if (g.row !== row) {
       flush();
       if (out.length) out[out.length - 1].eol = true;

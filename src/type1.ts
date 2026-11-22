@@ -62,6 +62,8 @@ export interface Type1Outlines {
   upem: number;
   /** SVG path data per character code, font units, y up. */
   glyphs: Record<number, string>;
+  /** Glyph name per character code */
+  names: Record<number, string>;
 }
 
 interface Type1Font {
@@ -401,14 +403,19 @@ export function type1Outlines(file: Uint8Array, encoding?: string[]): Type1Outli
   const font = parseType1(file);
   const enc = encoding && encoding.length ? encoding : font.encoding;
   const glyphs: Record<number, string> = {};
+  // The names are what turn a slot back into a character: `\to` is slot 33 of
+  // cmsy, named `arrowright`; without them a copied formula reads as `!`.
+  const names: Record<number, string> = {};
   for (let code = 0; code < Math.min(256, enc.length); code++) {
     const name = enc[code];
     if (!name || name === '.notdef') continue;
     const p = charStringToPath(font, name);
-    if (p) glyphs[code] = p;
+    if (!p) continue;
+    glyphs[code] = p;
+    names[code] = name;
   }
   const upem = font.fontMatrix[0] ? Math.round(1 / font.fontMatrix[0]) : 1000;
-  return { upem, glyphs };
+  return { upem, glyphs, names };
 }
 
 // Adobe StandardEncoding (used by `seac` and by fonts declaring `/Encoding StandardEncoding`).

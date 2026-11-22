@@ -11,7 +11,14 @@ export function fontKey(desc: FontDesc): string {
 /** Font resources the webview can draw. */
 export type FontResource =
   | { kind: 'sfnt'; data: Uint8Array }
-  | { kind: 'type1'; upem: number; glyphs: Record<number, string>; slant?: number; extend?: number }
+  | {
+      kind: 'type1';
+      upem: number;
+      glyphs: Record<number, string>;
+      text?: Record<number, string>;
+      slant?: number;
+      extend?: number;
+    }
   | { kind: 'missing'; reason: string };
 
 export type ImageResource = { kind: 'bitmap' | 'pdf'; mime: string; data: Uint8Array } | { kind: 'missing'; reason: string };
