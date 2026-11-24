@@ -277,7 +277,7 @@ export class PreviewPanel implements vscode.Disposable {
 
   private async sendResources(s: Session, dls: DisplayList[], epoch: number): Promise<boolean> {
     const loader = this.host.resources(s);
-    const [fonts, images] = await Promise.all([loader.fontsFor(dls, this.sentFonts), loader.imagesFor(dls, this.sentImages, s.projectRoot)]);
+    const [fonts, images] = await Promise.all([loader.fontsFor(dls, this.sentFonts), loader.imagesFor(dls, this.sentImages, s.imageDirs)]);
     // A reset or session switch while a font/image was loading must not change bookkeeping
     // or send old resources into the fresh webview.
     if (!this.isCurrent(s, epoch)) return false;
@@ -289,10 +289,14 @@ export class PreviewPanel implements vscode.Disposable {
       }
     }
     for (const [k, im] of images) {
-      this.sentImages.add(k);
       if (im.kind === 'missing') {
+        // not marked as sent: the next display list that uses it looks again, so an image the
+        // engine writes later (or that is added to the project) is drawn once it exists
+        if (!this.missing.has(`image:${k}`)) this.host.log.appendLine(`[images] ${im.reason}`);
         this.missing.add(`image:${k}`);
-        this.host.log.appendLine(`[images] ${im.reason}`);
+      } else {
+        this.sentImages.add(k);
+        this.missing.delete(`image:${k}`);
       }
     }
     if (fonts.size || images.size) this.postFor(s, { type: 'resources', fonts: [...fonts], images: [...images] }, epoch);

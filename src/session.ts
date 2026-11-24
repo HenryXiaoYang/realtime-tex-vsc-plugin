@@ -9,6 +9,7 @@ import { buildDirFor, debugDir, engineArgs, exportPathFor, processEnv, resolveSe
 import { ShadowText } from './edits';
 import { LiveGutter } from './gutter';
 import type { LiveMark } from './liveMarks';
+import type { ImageDirs } from './resources';
 import type { Action, PdfWord, ScreenKind } from './messages';
 import type {
   Diagnostic as RtexDiagnostic,
@@ -133,6 +134,19 @@ export class Session implements vscode.Disposable {
    * it can advance while a layout is being queued. `layoutPdfPath` is the version snapshot. */
   get pdfPath(): string {
     return path.join(this.buildDir, 'bg', path.basename(this.mainRel, path.extname(this.mainRel)) + '.pdf');
+  }
+
+  /** Where a relative image name in a display list is looked up: the project, then the
+   * directories the engines write to. The live engine runs in the project with output directory
+   * `serve`; a full compile runs in a copy of the sources (`src`, `src-body-0`, `src-body-1`)
+   * with output directory `bg/pass-0` or `bg/pass-1` (`bg` before rtex used pass directories).
+   * ltmermaid writes to the output directory, the svg package next to the sources. */
+  get imageDirs(): ImageDirs {
+    const b = this.buildDir;
+    const bg = path.join(b, 'bg');
+    const outputs = [path.join(b, 'serve'), path.join(bg, 'pass-0'), path.join(bg, 'pass-1'), bg];
+    const sources = [path.join(b, 'src'), path.join(b, 'src-body-0'), path.join(b, 'src-body-1')];
+    return { project: this.projectRoot, outputs: [...outputs, ...sources] };
   }
 
   /** rtex wrote a debug bundle for an engine failure (watchdog, state mismatch, crash). */

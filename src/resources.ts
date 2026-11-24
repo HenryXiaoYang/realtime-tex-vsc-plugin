@@ -8,6 +8,28 @@ import type { DisplayList, FontDesc } from './protocol';
 import { loadGlyphList, type GlyphList } from './glyphlist';
 import { MapEntry, parseEncFile, parseMapFile, type1Outlines } from './type1';
 
+/** Where a relative image name is looked up: the project first (the document's own images), then
+ * the directories the engines write to, newest file first. A package that writes a file during
+ * the compile writes it there (ltmermaid's `mermaid/<jobname>-mermaid-<n>.pdf` to the output
+ * directory, the svg package's `svg-inkscape/` next to the sources), and \includegraphics finds
+ * it there; the full compile alternates between two of each. */
+export interface ImageDirs {
+  project: string;
+  outputs: readonly string[];
+}
+
+/** The paths that exist, the most recently modified first. */
+async function newestFirst(paths: readonly string[]): Promise<string[]> {
+  const found = await Promise.all(paths.map(async (p) => {
+    try {
+      return { p, t: (await fs.stat(p)).mtimeMs };
+    } catch {
+      return undefined;
+    }
+  }));
+  return found.filter((f) => f !== undefined).sort((a, b) => b.t - a.t).map((f) => f.p);
+}
+
 export class ResourceLoader {
   private glyphs?: Promise<GlyphList>;
   private kpseCache = new Map<string, Promise<string | undefined>>();
@@ -37,8 +59,9 @@ export class ResourceLoader {
     return out;
   }
 
-  /** Image files referenced by `dls` (images_info) that are not in `have`, keyed by file name. */
-  async imagesFor(dls: readonly DisplayList[], have: ReadonlySet<string>, projectRoot: string): Promise<Map<string, ImageResource>> {
+  /** Image files referenced by `dls` (images_info) that are not in `have`, keyed by file name.
+   * A relative name is looked up in `dirs` (see `ImageDirs`). */
+  async imagesFor(dls: readonly DisplayList[], have: ReadonlySet<string>, dirs: ImageDirs): Promise<Map<string, ImageResource>> {
     const want = new Set<string>();
     for (const dl of dls) {
       for (const info of Object.values(dl.images_info ?? {})) {
@@ -47,7 +70,7 @@ export class ResourceLoader {
       }
     }
     const out = new Map<string, ImageResource>();
-    await Promise.all([...want].map(async (f) => out.set(f, await this.image(f, projectRoot))));
+    await Promise.all([...want].map(async (f) => out.set(f, await this.image(f, dirs))));
     return out;
   }
 
@@ -104,8 +127,8 @@ export class ResourceLoader {
     return { kind: 'type1', upem, glyphs, text, slant: entry?.slant, extend: entry?.extend };
   }
 
-  private async image(file: string, projectRoot: string): Promise<ImageResource> {
-    const candidates = path.isAbsolute(file) ? [file] : [path.join(projectRoot, file)];
+  private async image(file: string, dirs: ImageDirs): Promise<ImageResource> {
+    const candidates = path.isAbsolute(file) ? [file] : [path.join(dirs.project, file), ...(await newestFirst(dirs.outputs.map((d) => path.join(d, file))))];
     for (const c of candidates) {
       try {
         const data = new Uint8Array(await fs.readFile(c));

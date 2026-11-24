@@ -115,3 +115,52 @@ for (const output of [paragraph, layout]) {
     }
   });
 }
+
+test('a missing image is looked up again by the next update that uses it', async () => {
+  const logs: string[] = [];
+  const asked: string[][] = [];
+  const session = { projectRoot: '', imageDirs: { project: '', outputs: [] } } as unknown as Session;
+  const queue = new SerialQueue((e) => { throw e; });
+  const panel = Object.create(PreviewPanel.prototype) as PanelProbe;
+  const file = 'mermaid/rtex-serve-g1-mermaid-1.pdf';
+  let exists = false;
+  Object.assign(panel, {
+    session, queue, disposed: false, ready: true, attachmentEpoch: 0,
+    sentFonts: new Set<string>(), sentImages: new Set<string>(), missing: new Set<string>(),
+    panel: { webview: { postMessage() {} } },
+    host: {
+      log: { appendLine(message: string) { logs.push(message); } },
+      resources() {
+        return {
+          async fontsFor(): Promise<Map<string, FontResource>> { return new Map(); },
+          async imagesFor(dls: readonly DisplayList[], have: ReadonlySet<string>): Promise<Map<string, ImageResource>> {
+            const want = dls.flatMap((d) => Object.values(d.images_info ?? {}).map((i) => i.file)).filter((f) => !have.has(f));
+            asked.push(want);
+            const res: ImageResource = exists
+              ? { kind: 'pdf', mime: 'application/pdf', data: new Uint8Array() }
+              : { kind: 'missing', reason: `image not found: ${file}` };
+            return new Map(want.map((f) => [f, res]));
+          },
+        };
+      },
+    },
+  });
+  const ev = (paragraph as Extract<SessionOutput, { kind: 'paragraph' }>).ev;
+  const withImage: SessionOutput = { kind: 'paragraph', ev: { ...ev, dl: { ...dl, images_info: { '1': { file } } } } };
+  const update = async () => {
+    panel.onOutput(session, withImage);
+    await queue.idle();
+  };
+  await update();
+  await update();
+  assert.deepEqual(asked, [[file], [file]], 'asked again while missing');
+  assert.deepEqual(logs, [`[images] image not found: ${file}`], 'logged once');
+  assert.ok(panel.missing.has(`image:${file}`));
+  assert.equal(panel.sentImages.size, 0);
+  exists = true;
+  await update();
+  assert.deepEqual([...panel.sentImages], [file]);
+  assert.equal(panel.missing.size, 0);
+  await update();
+  assert.deepEqual(asked.at(-1), [], 'not asked again once found');
+});
