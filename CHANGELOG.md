@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Images a package writes while the document compiles (ltmermaid diagrams, the svg package's converted files) are drawn in the preview instead of grey placeholders: they are looked up in the build directories too, and an image that was missing is looked for again on the next update. Thanks to @Steve-Li-1998 (#37, #38).
+
 ## 0.0.6
 
 - Math copied from the preview reads as the symbols it shows: `\to` copies as →, `\in` as ∈, Greek letters and `\leftarrow` as themselves, instead of `!`, `2` or nothing. The text layer reads glyph names from TeX's glyph lists. Thanks to @dfshfghj (#19, #36).
