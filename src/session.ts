@@ -10,6 +10,7 @@ import { ShadowText } from './edits';
 import { LiveGutter } from './gutter';
 import type { LiveMark } from './liveMarks';
 import type { ImageDirs } from './resources';
+import type { GlyphTextOf } from '../webview/textLayer';
 import type { Action, PdfWord, ScreenKind } from './messages';
 import type {
   Diagnostic as RtexDiagnostic,
@@ -24,7 +25,7 @@ import type {
 } from './protocol';
 import { ExitInfo, RtexProcess } from './rtexProcess';
 import { layoutPdfPath } from './preview/layoutLinks';
-import { caretAt, charAtOffset, clickedChar, glyphTextOf, matchScore, orphanRows, sourceOffset, unitRows } from './glyphMap';
+import { caretAt, charAtOffset, clickedChar, glyphTextOf, matchScore, orphanRows, sourceOffset, unitRowsAcross } from './glyphMap';
 import { hitTest, PreviewTarget, spanAt, targetInFragments } from './sourceMap';
 import { explainReasons, Phase, SessionStatus } from './status';
 
@@ -83,6 +84,9 @@ export class Session implements vscode.Disposable {
   private startedAt = 0;
   private autoRestarted = false;
   private disposed = false;
+  /** The text of a Type 1 font's glyph from its name (the preview's font loader), for matching
+   * math symbols with the source. */
+  glyphTextOf?: GlyphTextOf;
   /** Gutter markers: which parts of the source update live. */
   private readonly gutter: LiveGutter;
 
@@ -782,20 +786,21 @@ export class Session implements vscode.Disposable {
     const start = shadow.utf16Offset(span.range.start);
     const src = shadow.text.slice(start, shadow.utf16Offset(span.range.end));
     let best: { target: PreviewTarget; distance: number } | undefined;
+    // its own rows on all its pages, and the lines no unit owns that have its words (its
+    // footnotes, margin notes; the footnote text can run on to the next page)
+    const own = unitRowsAcross(this.model, span.id);
+    const groups = own.rows.length ? [own] : [];
     const pages = new Set(frags.map((f) => f.page));
-    for (const page of [...pages]) pages.add(page + 1); // its footnote text can run on to the next page
-    for (const page of pages) {
-      const units = unitRows(this.model, page);
-      const own = units.get(span.id);
-      // its own rows, and the lines no unit owns that have its words (its footnotes, margin notes)
-      const groups = [...(own ? [own] : []), ...orphanRows(this.model, page, units).map((r) => [r])];
-      for (const rows of groups) {
-        const gt = glyphTextOf(rows);
-        if (rows !== own && matchScore(gt, src) < 0.5) continue;
-        const char = charAtOffset(gt, src, off - start);
-        // far from any text it shows (deep in a TikZ path): no character to point at
-        const caret = char && char.distance <= 40 && caretAt(gt, char);
-        if (caret && (!best || char.distance < best.distance)) best = { target: { page, ...caret }, distance: char.distance };
+    for (const page of [...pages]) pages.add(page + 1);
+    for (const page of pages) for (const r of orphanRows(this.model, page)) groups.push({ rows: [r], pages: [page] });
+    for (const { rows, pages: rowPages } of groups) {
+      const gt = glyphTextOf(rows, this.glyphTextOf);
+      if (rows !== own.rows && matchScore(gt, src) < 0.5) continue;
+      const char = charAtOffset(gt, src, off - start);
+      // far from any text it shows (deep in a TikZ path): no character to point at
+      const caret = char && char.distance <= 40 && caretAt(gt, char);
+      if (caret && (!best || char.distance < best.distance)) {
+        best = { target: { page: rowPages[caret.row], x: caret.x, y: caret.y, size: caret.size }, distance: char.distance };
       }
     }
     return best?.target;
@@ -809,7 +814,7 @@ export class Session implements vscode.Disposable {
     y: number,
     pdfText?: PdfWord[],
   ): Promise<{ doc: vscode.TextDocument; offset: number; unit: [number, number]; exact: boolean } | undefined> {
-    const char = clickedChar(this.model, page, x, y, Array.isArray(pdfText) ? pdfText : undefined);
+    const char = clickedChar(this.model, page, x, y, Array.isArray(pdfText) ? pdfText : undefined, this.glyphTextOf);
     const rough = char ? undefined : hitTest(this.model.currentPlacements(), page, y);
     const parIds = char?.parIds ?? (rough ? [rough.parId] : []);
     const open = [this.mainRel, ...[...this.shadows.keys()].filter((f) => f !== this.mainRel)];

@@ -200,10 +200,11 @@ test('the inverse: a source offset gives the character showing it, and its caret
   const w = charAtOffset(gt, src, src.indexOf('world') + 1);
   assert.deepEqual(w, { index: gt.text.indexOf('world') + 1, after: false, distance: 0 });
   const g = gt.glyphs[gt.text.indexOf('world') + 1 - 1]; // one glyph per character, minus the space
-  assert.deepEqual(caretAt(gt, w!), { x: g.x, y: 100 * PT, size });
-  // in markup: caret after the text before it
+  assert.deepEqual(caretAt(gt, w!), { x: g.x, y: 100 * PT, size, row: 0 });
+  // in markup: caret after the text before it (a space has no glyph: the character before it)
   const m = charAtOffset(gt, src, src.indexOf('\\emph') + 2);
-  assert.deepEqual([gt.text[m!.index], m!.after], [' ', true]);
+  assert.deepEqual([m!.index, m!.after], [gt.text.indexOf('see') + 2, true]);
+  assert.ok(caretAt(gt, m!));
   // on the next row
   const n = charAtOffset(gt, src, src.indexOf('line') + 3);
   assert.equal(caretAt(gt, n!)?.y, 112 * PT);
@@ -211,4 +212,21 @@ test('the inverse: a source offset gives the character showing it, and its caret
   const end = charAtOffset(gt, src, src.length);
   assert.deepEqual([end!.index, end!.after], [gt.text.length - 1, true]);
   assert.equal(caretAt(gt, end!)?.x, gt.glyphs.at(-1)!.x + gt.glyphs.at(-1)!.adv);
+});
+
+test('math symbols match the commands that print them, in order (#41)', () => {
+  const src = '$$\n\\sum_{i=1}^{n} \\alpha_i = \\sum_{i=1}^{n} \\beta_i\n$$\n$$\n\\sum_{i=1}^{n} \\alpha_i^2 = \\sum_{i=1}^{n} \\beta_i^2\n$$';
+  assert.equal(visibleSource(src).text, '∑i=1n αi = ∑i=1n βi ∑i=1n αi2 = ∑i=1n βi2 ');
+  // as the preview has it: each limit n above its ∑ comes first, a subscript after a superscript
+  const gt = glyphTextOf(rows(line('n∑ i=1 αi = n∑ i=1 βi', 100), line('n∑ i=1 α2i = n∑ i=1 β2i', 120)));
+  const nth = (s: string, ch: string, k: number) => [...s].reduce<number[]>((a, c, i) => (c === ch ? [...a, i] : a), [])[k];
+  for (const [cmd, ch] of [['\\sum', '∑'], ['\\alpha', 'α'], ['\\beta', 'β']]) {
+    for (let k = 0; src.split(cmd).length - 1 > k; k++) {
+      const at = src.split(cmd, k + 1).join(cmd).length;
+      for (const off of [at, at + 2]) {
+        assert.deepEqual(charAtOffset(gt, src, off), { index: nth(gt.text, ch, k), after: false, distance: 0 }, `${cmd} #${k}`);
+      }
+      assert.equal(sourceOffset(gt, nth(gt.text, ch, k), false, src), at);
+    }
+  }
 });

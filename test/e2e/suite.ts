@@ -8,7 +8,7 @@ import type { Api } from '../../src/extension';
 import { activeManaged, installedRelease, releaseBinary } from '../../src/config';
 import { installRelease } from '../../src/prebuilt';
 import { pathToFileURL } from 'url';
-import { glyphTextOf, unitRows } from '../../src/glyphMap';
+import { glyphTextOf, unitRows, unitRowsAcross } from '../../src/glyphMap';
 import { pdfContentBox } from '../../webview/links';
 import { pdfWords } from '../../webview/pdfText';
 import type { PreviewModel } from '../../webview/model';
@@ -341,6 +341,69 @@ async function steps(): Promise<void> {
     step(`every word of the stress document maps both ways exactly (${clicks} clicks, ${carets} carets, ${degraded.length} page(s) from the PDF)`);
   }
 
+  // 8d. math symbols map both ways to the commands that print them (#41): the same equations
+  // twice in one unit (displays, then an align on the next page), so each page's part of it
+  // also matches the other copy
+  {
+    const eq = (rel: string) => String.raw`\sum_{i=1}^{n} \alpha_i^2 ${rel} \sum_{i=1}^{n} \beta_i`;
+    const tex = String.raw`\documentclass{article}
+\usepackage[paperwidth=90mm,paperheight=62mm,margin=4mm]{geometry}
+\usepackage{amsmath}
+\begin{document}
+$$
+${eq('=')}
+$$
+$$
+${eq('=')}^2
+$$
+$$
+\frac{1}{n}${eq('=')}
+$$
+then
+\begin{align*}
+${eq('&=')} \\
+${eq('&=')}^2 \\
+\frac{1}{n}${eq('&=')}
+\end{align*}
+\end{document}
+`;
+    const file = path.join(folder, 'math', 'math.tex');
+    await vscode.workspace.fs.writeFile(vscode.Uri.file(file), Buffer.from(tex));
+    const mathDoc = await vscode.workspace.openTextDocument(file);
+    await vscode.window.showTextDocument(mathDoc, vscode.ViewColumn.One);
+    await vscode.commands.executeCommand('realtimeTex.openPreview');
+    await waitFor('a session for the math document', () => api.session()?.mainFile === file, 10000);
+    const sm = api.session()!;
+    await waitFor('its first layout', () => sm.status.phase === 'live' && sm.model.hasLayout, 120000);
+    await waitFor('the layout to settle', () => sm.status.convergence?.state === 'Converged' && !sm.status.pending, 120000);
+    await sleep(1000); // the preview has asked for its fonts: their glyph names give the symbols
+    const unit = [...sm.model.placements.keys()].map((id) => unitRowsAcross(sm.model, id)).find((u) => glyphTextOf(u.rows, sm.glyphTextOf).text.includes('∑'));
+    if (!unit) throw new Error('no unit with a ∑ in the preview');
+    const gt = glyphTextOf(unit.rows, sm.glyphTextOf);
+    const bad: string[] = [];
+    let checked = 0;
+    for (const [cmd, ch] of [['\\sum', '∑'], ['\\alpha', 'α'], ['\\beta', 'β']]) {
+      const glyphs = gt.glyphs.filter((g) => g.text === ch);
+      const offsets: number[] = [];
+      for (let k = tex.indexOf(cmd); k >= 0; k = tex.indexOf(cmd, k + 1)) offsets.push(k);
+      if (glyphs.length !== offsets.length || !glyphs.length) throw new Error(`${offsets.length} ${cmd} in the source, ${glyphs.length} ${ch} in the preview`);
+      for (const [k, off] of offsets.entries()) {
+        const g = glyphs[k];
+        const page = unit.pages[g.row];
+        checked++;
+        const t = await sm.previewTargetAt(mathDoc, off + 1);
+        if (!t?.size || t.page !== page || Math.abs(t.x - g.x) > 1 || Math.abs(t.y - g.y) > 1) bad.push(`caret for ${cmd} #${k}: ${JSON.stringify(t)}, glyph on page ${page} at ${g.x},${g.y}`);
+        const at = await sm.sourceAt(page, g.x + g.adv / 4, g.y - g.size / 4);
+        if (at?.offset !== off) bad.push(`click on ${ch} #${k}: offset ${at?.offset} (${JSON.stringify(tex.slice(at?.offset ?? 0, (at?.offset ?? 0) + 8))}), want ${off}`);
+      }
+    }
+    if (new Set(unit.pages).size < 2) throw new Error(`the math unit is on page ${unit.pages[0]} only`);
+    if (bad.length) throw new Error(`math symbols missed:\n${bad.join('\n')}`);
+    api.panel()!.panel.dispose();
+    await waitFor('the engine to stop', () => !sm.running, 10000);
+    step(`math symbols map both ways across ${new Set(unit.pages).size} page(s) (${checked} symbols)`);
+  }
+
   // 9. a document whose first compile fails explains why instead of waiting forever
   const broken = path.join(folder, 'broken.tex');
   await vscode.workspace.fs.writeFile(
@@ -396,3 +459,4 @@ async function steps(): Promise<void> {
   }
   console.log(`[e2e] all ${steps.length} steps passed`);
 }
+

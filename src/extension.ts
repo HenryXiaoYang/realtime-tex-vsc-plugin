@@ -331,6 +331,10 @@ async function startFor(main: string, target?: vscode.ViewColumn | PreviewPanel,
     }
     const diagnostics = vscode.languages.createDiagnosticCollection('realtime-tex');
     const session = new Session(ctx, main, log, diagnostics, preview);
+    session.glyphTextOf = (dl, font, char) => {
+      const desc = dl.fonts[String(font)];
+      return desc ? panelHost.resources(session).textOf(desc, char) : undefined;
+    };
     p = { session, panel, diagnostics, subs: [session.onStatus(() => updateUi())] };
     previews.set(main, p);
     // a wrapper is gone once its session ends, so a restored panel reopens the last main file
