@@ -35,6 +35,7 @@ export class ResourceLoader {
   private kpseCache = new Map<string, Promise<string | undefined>>();
   private mapFile: Promise<Map<string, MapEntry>> | undefined;
   private fonts = new Map<string, Promise<FontResource>>();
+  private loaded = new Map<string, FontResource>();
 
   constructor(
     private readonly env: NodeJS.ProcessEnv,
@@ -59,6 +60,12 @@ export class ResourceLoader {
     return out;
   }
 
+  /** The text of slot `char` of a Type 1 font loaded already (from its glyph name), if any. */
+  textOf(desc: FontDesc, char: number): string | undefined {
+    const r = this.loaded.get(fontKey(desc));
+    return r?.kind === 'type1' ? r.text?.[char] : undefined;
+  }
+
   /** Image files referenced by `dls` (images_info) that are not in `have`, keyed by file name.
    * A relative name is looked up in `dirs` (see `ImageDirs`). */
   async imagesFor(dls: readonly DisplayList[], have: ReadonlySet<string>, dirs: ImageDirs): Promise<Map<string, ImageResource>> {
@@ -79,6 +86,7 @@ export class ResourceLoader {
     if (!p) {
       p = this.loadFont(desc).catch((e: Error) => ({ kind: 'missing', reason: e.message }) as FontResource);
       this.fonts.set(key, p);
+      void p.then((r) => this.loaded.set(key, r));
     }
     return p;
   }
@@ -121,7 +129,8 @@ export class ResourceLoader {
     const list = await this.glyphList();
     const text: Record<number, string> = {};
     for (const [code, name] of Object.entries(names)) {
-      const value = list.get(name);
+      // cmex sizes of a symbol (summationdisplay, parenleftbigg) are not in the lists: the symbol's own name
+      const value = list.get(name) ?? list.get(name.replace(/(?:text|display|big|Big|bigg|Bigg)$/, ''));
       if (value) text[Number(code)] = value;
     }
     return { kind: 'type1', upem, glyphs, text, slant: entry?.slant, extend: entry?.extend };

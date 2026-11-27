@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- The cursor's place in math is shown on the symbol it is on, and a click on a math symbol puts the cursor on the command that prints it: `\alpha`, `\sum`, `\leq` and other symbol commands are matched with the symbols in the preview (read from the fonts' glyph names), and a paragraph that runs onto the next page is matched with its source as a whole, so a repeated equation is no longer taken for its other copy. Reported by @dfshfghj (#41).
 - Images a package writes while the document compiles (ltmermaid diagrams, the svg package's converted files) are drawn in the preview instead of grey placeholders: they are looked up in the build directories too, and an image that was missing is looked for again on the next update. Thanks to @Steve-Li-1998 (#37, #38).
 
 ## 0.0.6

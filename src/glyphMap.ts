@@ -6,7 +6,7 @@
 import type { DisplayList, Line } from './protocol';
 import type { PdfWord } from './messages';
 import type { PreviewModel } from '../webview/model';
-import { rowGlyphs, type RowGlyph, type TextRow } from '../webview/textLayer';
+import { rowGlyphs, type GlyphTextOf, type RowGlyph, type TextRow } from '../webview/textLayer';
 
 /** The text of `rows` (words, rows and baselines within a row split by a space) and, per glyph, where its text is. */
 export interface GlyphText {
@@ -14,11 +14,11 @@ export interface GlyphText {
   glyphs: (RowGlyph & { start: number })[];
 }
 
-export function glyphTextOf(rows: readonly TextRow[]): GlyphText {
+export function glyphTextOf(rows: readonly TextRow[], textOf?: GlyphTextOf): GlyphText {
   let text = '';
   const glyphs: GlyphText['glyphs'] = [];
   let row = -1;
-  for (const g of rowGlyphs(rows)) {
+  for (const g of rowGlyphs(rows, textOf)) {
     if (text && (g.row !== row || g.gap !== 'none')) text += ' ';
     row = g.row;
     glyphs.push({ ...g, start: text.length });
@@ -64,6 +64,22 @@ const HIDDEN_ARG = new Set([
 
 const TWO_HIDDEN_ARGS = new Set(['multicolumn', 'multirow']);
 
+// math commands that print one symbol, as `fold` spells its glyph (#41)
+const MATH_CHAR: Record<string, string> = {
+  alpha: 'α', beta: 'β', gamma: 'γ', delta: 'δ', epsilon: 'ε', varepsilon: 'ε', zeta: 'ζ', eta: 'η', theta: 'θ',
+  vartheta: 'θ', iota: 'ι', kappa: 'κ', lambda: 'λ', mu: 'μ', nu: 'ν', xi: 'ξ', pi: 'π', varpi: 'π', rho: 'ρ',
+  varrho: 'ρ', sigma: 'σ', varsigma: 'ς', tau: 'τ', upsilon: 'υ', phi: 'φ', varphi: 'φ', chi: 'χ', psi: 'ψ',
+  omega: 'ω', Gamma: 'Γ', Delta: 'Δ', Theta: 'Θ', Lambda: 'Λ', Xi: 'Ξ', Pi: 'Π', Sigma: 'Σ', Upsilon: 'Υ',
+  Phi: 'Φ', Psi: 'Ψ', Omega: 'Ω', sum: '∑', prod: '∏', int: '∫', sqrt: '√', infty: '∞', partial: '∂', nabla: '∇',
+  times: '×', cdot: '·', pm: '±', mp: '∓', div: '÷', ast: '∗', star: '⋆', bullet: '•', oplus: '⊕', otimes: '⊗',
+  leq: '≤', le: '≤', geq: '≥', ge: '≥', ll: '≪', gg: '≫', approx: '≈', sim: '∼', simeq: '≃', equiv: '≡',
+  propto: '∝', in: '∈', ni: '∋', subset: '⊂', supset: '⊃', subseteq: '⊆', supseteq: '⊇', cup: '∪', cap: '∩',
+  wedge: '∧', land: '∧', vee: '∨', lor: '∨', neg: '¬', lnot: '¬', forall: '∀', exists: '∃', emptyset: '∅',
+  perp: '⊥', to: '→', rightarrow: '→', leftarrow: '←', gets: '←', leftrightarrow: '↔', Rightarrow: '⇒',
+  Leftarrow: '⇐', Leftrightarrow: '⇔', uparrow: '↑', downarrow: '↓', langle: '⟨', rangle: '⟩', ell: 'ℓ',
+  aleph: 'ℵ', prime: "'",
+};
+
 export function visibleSource(src: string): Visible {
   const v: Visible = { text: '', start: [], end: [] };
   const emit = (ch: string, s: number, e: number) => {
@@ -94,6 +110,7 @@ export function visibleSource(src: string): Visible {
         let k = i + 1;
         while (k < src.length && isLetter(src[k])) k++;
         const name = src.slice(i + 1, k);
+        if (Object.hasOwn(MATH_CHAR, name)) emit(MATH_CHAR[name], i, k);
         if (src[k] === '*') k++;
         while (src[k] === ' ' || src[k] === '\t') k++;
         if (src[k] === '\n') k++;
@@ -140,6 +157,8 @@ function fold(c: string): string {
   if (c === ' ') return ' ';
   return c;
 }
+
+const WORD_CHAR = /[\p{L}\p{N}]/u;
 
 /** Cells of the alignment table beyond which a narrower window is aligned instead (16 MB). */
 const MAX_CELLS = 8_000_000;
@@ -212,10 +231,13 @@ export function charMap(gt: GlyphText, src: string, around: number): { vis: Visi
     let we = ws;
     while (we < a1 && gt.text[we] !== ' ') we++;
     const word = foldText(gt.text.slice(ws, we));
-    if (word) {
+    // a letter alone (a subscript) occurs everywhere: the alignment's choice stands
+    if (word.length > 1) {
       const near = nearestMatch(match, ws, a0, a1, true);
       let occ = -1;
       for (let k = vis.text.indexOf(word), tries = 0; k >= 0 && tries < 256; k = vis.text.indexOf(word, k + 1), tries++) {
+        // a word of its own there, not a piece of a longer one (math: `n∑` in `1n∑i=1n`)
+        if (k !== near && (WORD_CHAR.test(vis.text[k - 1] ?? '') || WORD_CHAR.test(vis.text[k + word.length] ?? ''))) continue;
         if (occ < 0 || (near !== undefined && Math.abs(k - near) < Math.abs(occ - near))) occ = k;
       }
       if (occ >= 0) for (let i = ws; i < we; i++) at[i] = occ + i - ws;
@@ -249,7 +271,8 @@ export function charAtOffset(gt: GlyphText, src: string, offset: number): { inde
   const { vis, at, a0, a1 } = charMap(gt, src, around);
   let best: { index: number; after: boolean; distance: number } | undefined;
   for (let i = a0; i < a1; i++) {
-    if (at[i] < 0) continue;
+    // a space has no glyph to put the caret at: the characters around it do
+    if (at[i] < 0 || gt.text[i] === ' ') continue;
     const [s, e] = [vis.start[at[i]], vis.end[at[i]]];
     if (offset >= s && offset < e) return { index: i, after: false, distance: 0 };
     // the nearest character before the offset, caret after it; else the first after it
@@ -259,11 +282,11 @@ export function charAtOffset(gt: GlyphText, src: string, offset: number): { inde
   return best;
 }
 
-/** Where the caret for `char` of `gt` goes, in sp: x, baseline and font size. */
-export function caretAt(gt: GlyphText, char: { index: number; after: boolean }): { x: number; y: number; size: number } | undefined {
+/** Where the caret for `char` of `gt` goes, in sp: x, baseline, font size, and the glyph's row. */
+export function caretAt(gt: GlyphText, char: { index: number; after: boolean }): { x: number; y: number; size: number; row: number } | undefined {
   const g = gt.glyphs.find((g) => g.start <= char.index && char.index < g.start + g.text.length);
   if (!g) return undefined;
-  return { x: g.x + (g.adv * (char.index - g.start + (char.after ? 1 : 0))) / g.text.length, y: g.y, size: g.size };
+  return { x: g.x + (g.adv * (char.index - g.start + (char.after ? 1 : 0))) / g.text.length, y: g.y, size: g.size, row: g.row };
 }
 
 /** The source index the alignment gives the matched character nearest `index`, shifted to
@@ -305,6 +328,22 @@ export function unitRows(model: PreviewModel, page: number): Map<number, TextRow
   return units;
 }
 
+/** The rows of unit `parId` on every page it is placed on, in page order, and each row's page.
+ * Its text is matched with its source as a whole: a page's part alone can match a part of the
+ * source that repeats it (#41). */
+export function unitRowsAcross(model: PreviewModel, parId: number): { rows: TextRow[]; pages: number[] } {
+  const out: { rows: TextRow[]; pages: number[] } = { rows: [], pages: [] };
+  const frags = [...(model.placements.get(parId) ?? []), ...(model.overlays.get(parId)?.fragments ?? [])];
+  const pages = [...new Set(frags.map((f) => f.page))].sort((a, b) => a - b);
+  for (const page of pages) {
+    for (const r of unitRows(model, page).get(parId) ?? []) {
+      out.rows.push(r);
+      out.pages.push(page);
+    }
+  }
+  return out;
+}
+
 /** The page's lines that no unit owns (footnote text, margin notes, running heads), one row each. */
 export function orphanRows(model: PreviewModel, page: number, units = unitRows(model, page)): TextRow[] {
   const pu = model.pages.get(page);
@@ -324,6 +363,7 @@ export function clickedChar(
   x: number,
   y: number,
   pdfText?: readonly PdfWord[],
+  textOf?: GlyphTextOf,
 ): { parIds: number[]; gt: GlyphText; index: number; after: boolean } | undefined {
   const units = unitRows(model, page);
   const groups: { parIds: number[]; rows: TextRow[] }[] = [...units].map(([parId, rows]) => ({ parIds: [parId], rows }));
@@ -344,8 +384,17 @@ export function clickedChar(
   // farther than about two lines from any text: not a click on this unit
   if (!best || best.v > 24 * 65536) return undefined;
   let rows = best.rows;
-  let gt = glyphTextOf(rows);
+  let gt = glyphTextOf(rows, textOf);
   let at = charAt(gt, x, y);
+  if (at && best.parIds.length === 1) {
+    // the unit's text on all its pages, the click on a glyph of this page
+    const across = unitRowsAcross(model, best.parIds[0]);
+    if (across.pages.some((p) => p !== page)) {
+      const all = glyphTextOf(across.rows, textOf);
+      const here = charAt({ text: all.text, glyphs: all.glyphs.filter((g) => across.pages[g.row] === page) }, x, y);
+      if (here) [gt, at] = [all, here];
+    }
+  }
   // a click on text only the PDF has (a TikZ label): the unit's PDF text instead
   const box = (w: PdfWord) => [w.x, w.x + w.w, w.y - 0.75 * w.size, w.y + 0.25 * w.size];
   const under = (w: PdfWord, px: number, py: number) => {
